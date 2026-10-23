@@ -169,6 +169,32 @@ class ApplicationAdminController extends BaseController
                 $row['latest_pending_note'] = $latest[$aid] ?? null;
             }
             unset($row);
+
+            // Registration fee state per row, so the list shows whether an accepted
+            // applicant has actually paid it. One batch query for the whole page.
+            $regBills = [];
+            $db = \Core\Database::getInstance();
+            $bills = $db->fetchAll(
+                "SELECT application_id, amount_due, amount_paid
+                   FROM `application_invoices`
+                  WHERE fee_type = 'REGISTRATION' AND application_id IN (" . implode(',', $ids) . ")"
+            );
+            foreach ($bills as $bill) {
+                $regBills[(int)$bill['application_id']] = $bill;
+            }
+            foreach ($rows as &$row) {
+                $bill = $regBills[(int)$row['id']] ?? null;
+                if ($bill === null) {
+                    $row['registration_fee'] = ['status' => 'unbilled', 'balance' => null];
+                } else {
+                    $balance = round((float)$bill['amount_due'] - (float)$bill['amount_paid'], 2);
+                    $row['registration_fee'] = [
+                        'status'  => $balance <= 0.009 ? 'paid' : 'unpaid',
+                        'balance' => max(0.0, $balance),
+                    ];
+                }
+            }
+            unset($row);
             $result['data'] = $rows;
         }
 

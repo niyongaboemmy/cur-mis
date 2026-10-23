@@ -21,8 +21,9 @@ import {
   XCircle,
   PlayCircle,
 } from "lucide-react";
-import { applicantService } from "@/services/admissionService";
+import { applicantService, portalService } from "@/services/admissionService";
 import { systemService } from "@/services/systemService";
+import { useAuthStore } from "@/store/authStore";
 import { ApplicationStatus } from "@/types/admission";
 import Modal from "@/components/ui/Modal";
 import { Field } from "@/components/applicant/ApplicantPortalShared";
@@ -872,6 +873,47 @@ function EditApplicationModal({
   const app = applicationQ.data?.data;
   const [form, setForm] = useState<any>(null);
 
+  // Query for dropdowns
+  const facultiesQ = useQuery({
+    queryKey: ["portal", "faculties"],
+    queryFn: () => portalService.getFaculties(),
+  });
+  const departmentsQ = useQuery({
+    queryKey: ["portal", "faculties", form?.faculty_id, "departments"],
+    queryFn: () => portalService.getFacultyDepartments(form?.faculty_id),
+    enabled: !!form?.faculty_id,
+  });
+  const levelsQ = useQuery({
+    queryKey: ["portal", "levels"],
+    queryFn: () => portalService.getLevels(),
+  });
+  const programmeTypesQ = useQuery({
+    queryKey: ["portal", "programme-types"],
+    queryFn: () => portalService.getProgrammeTypes(),
+  });
+  const optionsQ = useQuery({
+    queryKey: ["portal", "departments", form?.department_id, "options"],
+    queryFn: async () => {
+      const response = await fetch(
+        `/api/portal/departments/${form?.department_id}/options`,
+        {
+          headers: {
+            Authorization: `Bearer ${useAuthStore.getState().token}`,
+          },
+        }
+      );
+      if (!response.ok) throw new Error("Failed to load options");
+      return response.json();
+    },
+    enabled: !!form?.department_id,
+  });
+
+  const faculties = facultiesQ.data?.data ?? [];
+  const departments = departmentsQ.data?.data ?? [];
+  const levels = levelsQ.data?.data ?? [];
+  const programmeTypes = programmeTypesQ.data?.data ?? [];
+  const options = optionsQ.data?.data ?? [];
+
   useEffect(() => {
     if (app && !form) {
       setForm({
@@ -891,6 +933,13 @@ function EditApplicationModal({
         // International (non-Rwandan) applicants — visa fields
         visa_obtained_date: (app as any).visa_obtained_date ?? "",
         visa_expiration_date: (app as any).visa_expiration_date ?? "",
+        // Programme selection fields
+        program_id: app.program_id ?? "",
+        campus_id: app.campus_id ?? "",
+        mode_of_study: app.mode_of_study ?? "",
+        level_id: app.level_id ?? "",
+        faculty_id: app.faculty_id ?? "",
+        department_id: app.department_id ?? "",
       });
     }
   }, [app, form]);
@@ -925,8 +974,8 @@ function EditApplicationModal({
           toast.success('All documents replaced! Application resubmitted for review.');
           onSuccess();
         } catch (error) {
+          console.error('Auto-submit failed:', error);
           // Silently fail - user can manually submit if needed
-          console.log('Auto-submit skipped');
         }
       }
     }
@@ -1140,6 +1189,103 @@ function EditApplicationModal({
               }
             />
           </Field>
+
+          {(app.status === 'documents_rejected' || app.status === 'requested_changes') && (
+            <>
+              <div className="sm:col-span-2 pt-4 border-t border-ink-50 dark:border-ink-800 mt-2">
+                <h4 className="text-[13px] font-bold text-ink-900 dark:text-white">
+                  Programme Selection
+                </h4>
+                <p className="text-[12px] text-ink-500 dark:text-ink-400 mt-1">
+                  You can change your programme choice, faculty, department, and study mode.
+                </p>
+              </div>
+              <Field label="Faculty">
+                <select
+                  className="input"
+                  value={form.faculty_id ?? ""}
+                  onChange={(e) =>
+                    setForm({ ...form, faculty_id: e.target.value ? Number(e.target.value) : "", department_id: "" })
+                  }
+                >
+                  <option value="">Select a faculty...</option>
+                  {faculties.map((f: any) => (
+                    <option key={f.id} value={f.id}>
+                      {f.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              {form.faculty_id && (
+                <Field label="Department">
+                  <select
+                    className="input"
+                    value={form.department_id ?? ""}
+                    onChange={(e) =>
+                      setForm({ ...form, department_id: e.target.value ? Number(e.target.value) : "", program_id: "" })
+                    }
+                  >
+                    <option value="">Select a department...</option>
+                    {departments.map((d: any) => (
+                      <option key={d.id} value={d.id}>
+                        {d.name}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              )}
+              {form.department_id && options.length > 0 && (
+                <Field label="Programme Option">
+                  <select
+                    className="input"
+                    value={form.program_id ?? ""}
+                    onChange={(e) =>
+                      setForm({ ...form, program_id: e.target.value ? Number(e.target.value) : "" })
+                    }
+                  >
+                    <option value="">Select a programme option...</option>
+                    {options.map((opt: any) => (
+                      <option key={opt.id} value={opt.id}>
+                        {opt.name}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              )}
+              <Field label="Level">
+                <select
+                  className="input"
+                  value={form.level_id ?? ""}
+                  onChange={(e) =>
+                    setForm({ ...form, level_id: e.target.value ? Number(e.target.value) : "" })
+                  }
+                >
+                  <option value="">Select a level...</option>
+                  {levels.map((l: any) => (
+                    <option key={l.id} value={l.id}>
+                      {l.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Mode of Study">
+                <select
+                  className="input"
+                  value={form.mode_of_study ?? ""}
+                  onChange={(e) =>
+                    setForm({ ...form, mode_of_study: e.target.value })
+                  }
+                >
+                  <option value="">Select mode of study...</option>
+                  {programmeTypes.map((pt: any) => (
+                    <option key={pt.id} value={pt.name}>
+                      {pt.display_name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            </>
+          )}
         </div>
       ) : (
         <div className="space-y-6">
@@ -1172,10 +1318,9 @@ function EditApplicationModal({
             }
             onUpload={async ({ document_type_id, file }) => {
               await applicantService.uploadDocument({ document_type_id, file });
-              // Check and auto-submit documents if all rejected ones are replaced
-              setTimeout(() => {
-                checkAndAutoSubmitDocuments();
-              }, 500);
+              // Invalidate and wait for refetch, then check for auto-submit
+              await applicationQ.refetch();
+              checkAndAutoSubmitDocuments();
             }}
             invalidateKeys={[["applicant", "application", appId]]}
           />

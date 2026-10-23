@@ -325,7 +325,7 @@ class DocumentHelper
           </p>
 
           <div class="sign">
-            <p class="bold">Mutayomba Sylvestre</p>
+            <p class="bold">{$registrar}</p>
             <p>The Academic Registrar</p>
           </div>
 
@@ -1234,87 +1234,170 @@ class DocumentHelper
         HTML;
     }
 
+    /** Semesters in every undergraduate programme, as printed on the official schedule. */
+    public const FEE_SCHEDULE_SEMESTERS = 8;
+
     /**
-     * Build the official fee schedule table (14 columns, grouped by faculty).
-     * Output is a styled HTML table matching the PDF template layout.
+     * Official "Academic Fees Structure" (undergraduate, Rwandan and EAC students).
+     *
+     * Columns follow the signed CUR schedule: programme, duration, one-off and yearly fees,
+     * total tuition per programme, then the derived tuition per semester and per year.
+     * Duration and internship count come from the department row (see migration
+     * 2026_10_13_001); a null value prints as "—" rather than a guessed number.
+     *
+     * @param array $rows        Pivoted rows from FeeStructureModel::scheduleExport()
+     * @param array $generalFees Fees that apply to all departments (document / other fees)
+     * @param array $meta        academic_year (label), generated_date
      */
     public static function buildFeeSchedule(array $rows, array $generalFees = [], array $meta = []): string
     {
-        $acYear = $meta['academic_year'] ?? date('Y');
+        $acYear        = $meta['academic_year'] ?? date('Y');
         $generatedDate = $meta['generated_date'] ?? date('Y-m-d');
+        $semesters     = self::FEE_SCHEDULE_SEMESTERS;
 
-        // dompdf's CSS `@page` margin is not honored by this build, so the letterhead painted
-        // by PdfLayout::stampHeader() (a fixed-position canvas overlay, not part of normal flow)
-        // is reserved for with an ordinary block spacer instead (see buildPostgraduateFeeSchedule).
-        $headerSpace = 190;
+        // Letterhead is painted on the canvas by PdfLayout::stampHeader() on EVERY page. It is
+        // 137pt tall at A4 landscape width (ends ~143pt from the top), so the @page top margin
+        // must clear that. A margin reserves the band on every page, unlike a body spacer.
+        $headerSpace = 200;
+        $dash = '—';
 
-        $fmtNum = fn ($n) => $n !== null ? number_format((float)$n, 0, '', ',') . ' RWF' : '—';
+        // Plain amounts: the column headers already say RWF, as on the signed schedule.
+        $fmt = static fn ($n) => ($n === null || $n === '') ? $dash : number_format((float)$n, 0, '', ',');
 
-        // Group rows by faculty
+        $cols = 14;
+
         $grouped = [];
         foreach ($rows as $row) {
-            $fac = $row['fac_name'] ?? 'General';
-            if (!isset($grouped[$fac])) {
-                $grouped[$fac] = [];
-            }
-            $grouped[$fac][] = $row;
+            $grouped[$row['fac_name'] ?? 'General'][] = $row;
         }
 
         $tbody = '';
         $sn = 1;
         foreach ($grouped as $facName => $facRows) {
-            // Faculty header row
-            $tbody .= <<<HTML
-            <tr style="background: #e8e8e8; font-weight: bold; border: 1px solid #ddd;">
-                <td colspan="10" style="padding: 8px; border: 1px solid #ddd;">{$facName}</td>
-            </tr>
-            HTML;
+            $facName = htmlspecialchars((string)$facName, ENT_QUOTES, 'UTF-8');
+            $tbody .= "<tr class=\"faculty\"><td colspan=\"{$cols}\">{$facName}</td></tr>";
 
-            // Program rows under this faculty
             foreach ($facRows as $row) {
-                $progName = $row['option_name'] ?? 'Unnamed Program';
-                $semesterLabel = $row['semester'] ? 'Semester ' . $row['semester'] : 'Full year';
-                $duration = $row['level_name'] ? ' (' . $row['level_name'] . ')' : '';
+                $program  = htmlspecialchars((string)($row['option_name'] ?? 'Unnamed Program'), ENT_QUOTES, 'UTF-8');
+                $level    = !empty($row['level_name']) ? ' (' . htmlspecialchars((string)$row['level_name'], ENT_QUOTES, 'UTF-8') . ')' : '';
+                $duration = isset($row['duration_years']) && (int)$row['duration_years'] > 0 ? (int)$row['duration_years'] : null;
+                $internships = isset($row['internship_count']) && (int)$row['internship_count'] > 0 ? (int)$row['internship_count'] : null;
 
-                $tbody .= <<<HTML
-                <tr style="border: 1px solid #ddd;">
-                    <td style="border: 1px solid #ddd; padding: 5px 6px; text-align: center; font-size: 9.5px;">{$sn}</td>
-                    <td style="border: 1px solid #ddd; padding: 5px 6px; font-size: 9.5px;">{$progName}{$duration}</td>
-                    <td style="border: 1px solid #ddd; padding: 5px 6px; text-align: center; font-size: 9.5px;">{$semesterLabel}</td>
-                    <td style="border: 1px solid #ddd; padding: 5px 6px; text-align: right; font-size: 9.5px;">{$fmtNum($row['application_fee'])}</td>
-                    <td style="border: 1px solid #ddd; padding: 5px 6px; text-align: right; font-size: 9.5px;">{$fmtNum($row['registration_fee'])}</td>
-                    <td style="border: 1px solid #ddd; padding: 5px 6px; text-align: right; font-size: 9.5px;">{$fmtNum($row['cursu_fee'])}</td>
-                    <td style="border: 1px solid #ddd; padding: 5px 6px; text-align: right; font-size: 9.5px; font-weight: bold;">{$fmtNum($row['tuition_fee'])}</td>
-                    <td style="border: 1px solid #ddd; padding: 5px 6px; text-align: right; font-size: 9.5px;">{$fmtNum($row['internship_fee'])}</td>
-                    <td style="border: 1px solid #ddd; padding: 5px 6px; text-align: right; font-size: 9.5px;">{$fmtNum($row['final_project_fee'])}</td>
-                    <td style="border: 1px solid #ddd; padding: 5px 6px; text-align: right; font-size: 9.5px;">{$fmtNum($row['graduation_fee'])}</td>
-                </tr>
-                HTML;
+                $tuition         = $row['tuition_fee'] !== null ? (float)$row['tuition_fee'] : null;
+                $tuitionPerSem   = $tuition !== null ? $tuition / $semesters : null;
+                $tuitionPerYear  = ($tuition !== null && $duration !== null) ? $tuition / $duration : null;
+
+                $durationLabel   = $duration !== null ? $duration . ' years' : $dash;
+                $internshipLabel = $internships !== null ? (string)$internships : $dash;
+
+                $tbody .= '<tr>'
+                    . '<td class="c">' . $sn . '</td>'
+                    . '<td>' . $program . $level . '</td>'
+                    . '<td class="c">' . $durationLabel . '</td>'
+                    . '<td class="r">' . $fmt($row['application_fee']) . '</td>'
+                    . '<td class="r">' . $fmt($row['registration_fee']) . '</td>'
+                    . '<td class="r">' . $fmt($row['cursu_fee']) . '</td>'
+                    . '<td class="r b">' . $fmt($tuition) . '</td>'
+                    . '<td class="r">' . $fmt($row['internship_fee']) . '</td>'
+                    . '<td class="r">' . $fmt($row['final_project_fee']) . '</td>'
+                    . '<td class="r">' . $fmt($row['graduation_fee']) . '</td>'
+                    . '<td class="c">' . $semesters . '</td>'
+                    . '<td class="c">' . $internshipLabel . '</td>'
+                    . '<td class="r b">' . $fmt($tuitionPerSem) . '</td>'
+                    . '<td class="r b">' . $fmt($tuitionPerYear) . '</td>'
+                    . '</tr>';
                 $sn++;
             }
         }
 
-        $generalRows = '';
+        $otherRows = '';
         foreach ($generalFees as $fee) {
-            $catLabel = $fee['student_category'] ? ' (' . $fee['student_category'] . ')' : '';
-            $generalRows .= <<<HTML
-            <tr>
-                <td style="border: 1px solid #ddd; padding: 5px 8px; font-size: 9.5px;">{$fee['label']}{$catLabel}</td>
-                <td style="border: 1px solid #ddd; padding: 5px 8px; text-align: right; font-size: 9.5px;">{$fmtNum($fee['amount'])}</td>
-            </tr>
-            HTML;
+            $label = htmlspecialchars((string)($fee['label'] ?? ''), ENT_QUOTES, 'UTF-8');
+            $otherRows .= '<tr><td>' . $label . '</td><td class="r">' . $fmt($fee['amount'] ?? null) . '</td></tr>';
         }
+        $otherSection = $otherRows === ''
+            ? ''
+            : '<div class="subtitle">Other Fees / Document Fees</div>'
+              . '<table class="other"><tbody>' . $otherRows . '</tbody></table>';
 
-        $generalSection = '';
-        if ($generalRows !== '') {
-            $generalSection = <<<HTML
-            <div class="subtitle">Fees Applying to All Departments</div>
-            <table style="width: 60%;">
-                <tbody>
-                    {$generalRows}
-                </tbody>
-            </table>
-            HTML;
+        $notes = [
+            'All fees are calculated in Rwandan Francs.',
+            'Application fee is a one-time payment fee, paid on time.',
+            'Registration fee is paid after every 2 semesters.',
+            'Uniform fee is a one-time payment at the start of the programme.',
+            'Internship fees for undergraduate programmes are 30,000 RWF, except health programmes, and are paid before going on internship. Some faculties do one internship in the whole programme and others two (faculty of education, food processing).',
+            'Internship fees for health programmes are 160,000 RWF and are paid before going on internship; there is an internship fee every year.',
+            'Internship fees for postgraduate programmes are 60,000 RWF.',
+            'The final project is paid by the last-year student: 150,000 RWF.',
+            'Graduation fees are paid before graduation.',
+            'Students must show medical insurance before admission.',
+        ];
+        $noteItems = implode('', array_map(static fn ($n) => '<li>' . htmlspecialchars($n, ENT_QUOTES, 'UTF-8') . '</li>', $notes));
+
+        $title = htmlspecialchars('ACADEMIC FEES STRUCTURE FOR ACADEMIC YEAR ' . $acYear . ' (Rwandan and East African community (EAC) students)', ENT_QUOTES, 'UTF-8');
+        $acYearSafe = htmlspecialchars((string)$acYear, ENT_QUOTES, 'UTF-8');
+        $generatedSafe = htmlspecialchars((string)$generatedDate, ENT_QUOTES, 'UTF-8');
+        // Registrar name comes from the Signatories setting, not a literal, so a change of officeholder needs no deploy.
+        $registrarSafe = htmlspecialchars(Signatories::academicRegistrar(), ENT_QUOTES, 'UTF-8');
+
+        // Annex: every active fee structure for the year, unfiltered, as on the Fee Rates page.
+        // The programme table above only carries the pivoted tuition/application/registration/...
+        // columns, so structures outside them (other fee types, international, per-semester
+        // or per-installment rows) would otherwise not appear in the PDF at all.
+        $e = static fn ($v) => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
+        // Dompdf ignores the @page top margin, so the letterhead band is reserved by a first row
+        // of <thead>. A thead repeats on every page, so each page keeps the band clear of the table.
+        $letterheadBand = '<tr class="band"><td colspan="14" style="height:' . $headerSpace . 'px;border:none;background:none;padding:0;"></td></tr>';
+        $titleRow = '<tr><td colspan="14" style="border:none;background:none;text-align:center;font-size:11px;font-weight:bold;text-decoration:underline;padding:0 0 6px 0;">' . $title . '</td></tr>';
+
+        $annexSection = '';
+        $register = $meta['register'] ?? [];
+        if ($register !== []) {
+            $annexRows = '';
+            $n = 1;
+            foreach ($register as $s) {
+                $type = ucfirst(strtolower(str_replace('_', ' ', (string)$s['fee_type'])));
+                $dept = !empty($s['department_names']) ? $s['department_names'] : 'All';
+                $level = !empty($s['level_name']) ? $s['level_name'] : 'All';
+                $category = trim(implode(' · ', array_filter([
+                    !empty($s['student_category']) ? ucfirst(str_replace('_', ' ', (string)$s['student_category'])) : null,
+                    !empty($s['programme_category']) ? ucfirst((string)$s['programme_category']) : null,
+                ]))) ?: 'All';
+                $semester = ($s['semester'] !== null && $s['semester'] !== '') ? 'S' . (int)$s['semester'] : $dash;
+                $plan = match ($s['payment_plan'] ?? 'full_year') {
+                    'per_semester'    => 'Per semester',
+                    'per_installment' => (!empty($s['installment_count']) ? (int)$s['installment_count'] : '?') . '× installments',
+                    default           => 'Full year',
+                };
+                $annexRows .= '<tr>'
+                    . '<td class="c">' . $n . '</td>'
+                    . '<td>' . $e($type) . '</td>'
+                    . '<td>' . $e($s['label']) . '</td>'
+                    . '<td>' . $e($dept) . '</td>'
+                    . '<td>' . $e($level) . '</td>'
+                    . '<td>' . $e($category) . '</td>'
+                    . '<td class="c">' . $e($semester) . '</td>'
+                    . '<td>' . $e($plan) . '</td>'
+                    . '<td class="r b">' . $fmt($s['amount']) . ' ' . $e($s['currency'] ?? 'RWF') . '</td>'
+                    . '</tr>';
+                $n++;
+            }
+            $annexTitle = '<tr><td colspan="9" style="border:none;background:none;text-align:center;font-size:11px;font-weight:bold;text-decoration:underline;padding:0 0 6px 0;">ANNEX: ALL FEE STRUCTURES FOR ACADEMIC YEAR ' . $acYearSafe . ' (' . count($register) . ' active)</td></tr>';
+            $annexSection = '<div class="annex">'
+                . '<table>'
+                . '<thead>' . str_replace('colspan="14"', 'colspan="9"', $letterheadBand) . $annexTitle . '<tr>'
+                . '<th style="width: 4%;">S/N</th>'
+                . '<th style="width: 12%;">Fee type</th>'
+                . '<th style="width: 18%;">Label</th>'
+                . '<th style="width: 22%;">Department</th>'
+                . '<th style="width: 10%;">Level</th>'
+                . '<th style="width: 14%;">Category</th>'
+                . '<th style="width: 6%;">Semester</th>'
+                . '<th style="width: 7%;">Payment plan</th>'
+                . '<th style="width: 7%;">Amount</th>'
+                . '</tr></thead>'
+                . '<tbody>' . $annexRows . '</tbody>'
+                . '</table></div>';
         }
 
         return <<<HTML
@@ -1323,40 +1406,53 @@ class DocumentHelper
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Academic Fees Structure {$acYear}</title>
+            <title>Academic Fees Structure {$acYearSafe}</title>
             <style>
+                @page { margin: 0 0 12mm 0; }
                 * { margin: 0; padding: 0; box-sizing: border-box; }
-                body { font-family: 'Times New Roman', Times, serif; font-size: 12px; color: #333; line-height: 1.15; }
-                .page { max-width: 29.7cm; margin: 0 auto; padding: 0 15mm 6mm 15mm; background: white; }
-                .letterhead-spacer { height: {$headerSpace}px; }
-                .title { font-size: 13px; font-weight: bold; margin: 0 0 8px 0; text-align: center; }
-                .subtitle { font-size: 11px; font-weight: bold; margin: 8px 0 4px 0; }
-                table { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
-                table th { background: #f5f5f5; border: 1px solid #ddd; padding: 5px 6px; text-align: left; font-weight: bold; font-size: 9.5px; }
-                table td { border: 1px solid #ddd; padding: 5px 6px; font-size: 9.5px; }
-                .notes { font-size: 9px; margin-top: 4px; }
-                .notes li { margin-bottom: 0; }
-                .signature { margin-top: 6px; font-size: 10px; font-weight: bold; }
-                .footer { margin-top: 8px; padding-top: 4px; border-top: 1px solid #ddd; font-size: 8px; color: #999; text-align: center; }
+                body { font-family: 'Times New Roman', Times, serif; font-size: 10px; color: #222; line-height: 1.15; }
+                .page { margin: 0 auto; padding: 0 12mm; background: white; }
+                .title { font-size: 11px; font-weight: bold; margin: 0 0 6px 0; text-align: center; text-decoration: underline; }
+                .subtitle { font-size: 10px; font-weight: bold; margin: 8px 0 3px 0; }
+                table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
+                th, td { border: 1px solid #999; padding: 3px 4px; font-size: 8.5px; vertical-align: middle; }
+                th { background: #efefef; font-weight: bold; text-align: center; }
+                td.c { text-align: center; }
+                td.r { text-align: right; }
+                td.b { font-weight: bold; }
+                tr.faculty td { background: #e4e4e4; font-weight: bold; text-align: left; }
+                table.other { width: 45%; }
+                .notes { font-size: 8.5px; margin: 4px 0 0 14px; }
+                .notes li { margin-bottom: 1px; }
+                .signatures { width: 100%; margin-top: 14px; }
+                .signatures td { border: none; text-align: center; font-size: 9px; padding: 0; }
+                .signatures .name { font-weight: bold; }
+                .footer { margin-top: 6px; padding-top: 3px; border-top: 1px solid #ddd; font-size: 7.5px; color: #888; text-align: center; }
+                .annex { page-break-before: always; }
+                .annex td { font-size: 8px; }
             </style>
         </head>
         <body>
             <div class="page">
-                <div class="letterhead-spacer"></div>
-                <div class="title">Academic Fees Structure {$acYear} — Fee Schedule by Faculty and Program</div>
                 <table>
                     <thead>
+                        {$letterheadBand}
+                        {$titleRow}
                         <tr>
                             <th style="width: 3%;">S/N</th>
-                            <th style="width: 24%;">Program</th>
-                            <th style="width: 8%;">Semester</th>
-                            <th style="width: 11%;">Application Fee</th>
-                            <th style="width: 11%;">Registration Fee</th>
-                            <th style="width: 9%;">CURSU Fee</th>
-                            <th style="width: 11%;">Total Tuition</th>
-                            <th style="width: 11%;">Internship Fee</th>
-                            <th style="width: 11%;">Final Project Fee</th>
-                            <th style="width: 11%;">Graduation Fee</th>
+                            <th style="width: 19%;">Program</th>
+                            <th style="width: 6%;">Duration</th>
+                            <th style="width: 6%;">Application fee (RWF)</th>
+                            <th style="width: 6%;">Registration fee / year (RWF)</th>
+                            <th style="width: 6%;">CURSU fee / year (RWF)</th>
+                            <th style="width: 7%;">Total tuition per programme (RWF)</th>
+                            <th style="width: 6%;">Internship fee / internship (RWF)</th>
+                            <th style="width: 6%;">Final project fee (RWF)</th>
+                            <th style="width: 6%;">Graduation fee (RWF)</th>
+                            <th style="width: 5%;">Semesters</th>
+                            <th style="width: 5%;">Number of internships</th>
+                            <th style="width: 7%;">Tuition per semester (RWF)</th>
+                            <th style="width: 7%;">Tuition per year (RWF)</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -1364,26 +1460,24 @@ class DocumentHelper
                     </tbody>
                 </table>
 
-                {$generalSection}
+                {$otherSection}
 
-                <ul class="notes">
-                    <li>All fees are calculated in Rwandan Francs</li>
-                    <li>Application fee is one time payment fee and <strong>non-refundable</strong></li>
-                    <li>Registration fee is paid after every 2 semesters.</li>
-                    <li>Internship fees is paid before going in internship.</li>
-                    <li>Graduation fees is paid before Graduation</li>
-                </ul>
+                <div class="subtitle">Notes</div>
+                <ul class="notes">{$noteItems}</ul>
 
-                <div class="signature">
-                    <p>GASANGO Lilianne</p>
-                    <p>Director of Administration and finance</p>
-                </div>
+                <table class="signatures">
+                    <tr>
+                        <td><div class="name">{$registrarSafe}</div><div>Academic Registrar</div></td>
+                        <td><div class="name">Ndayishimiye J.Damascene</div><div>Chief Accountant</div></td>
+                        <td><div class="name">GASANGO Lilianne</div><div>Director of Administration and Finance</div></td>
+                    </tr>
+                </table>
 
                 <div class="footer">
-                    <p>Academic Year: {$acYear} | Generated: {$generatedDate}</p>
-                    <p>For inquiries, contact the Finance Office</p>
+                    <p>Academic Year: {$acYearSafe} | Generated: {$generatedSafe}</p>
                 </div>
             </div>
+            {$annexSection}
         </body>
         </html>
         HTML;

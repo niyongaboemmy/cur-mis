@@ -5,7 +5,7 @@ import toast from 'react-hot-toast'
 import * as XLSX from 'xlsx'
 import {
   Plus, Trash2, Pencil, Loader2, AlertCircle, CalendarClock, Save, Upload, Download,
-  Search, ChevronDown, X, MapPin, User, CheckCircle2,
+  Search, ChevronDown, X, MapPin, User, Users, CheckCircle2,
 } from 'lucide-react'
 import Modal from '@/components/ui/Modal'
 import SearchableSelect from '@/components/ui/SearchableSelect'
@@ -39,9 +39,15 @@ type ServerBlock = {
   activity:        string | null
   year_of_study:   number | null
   campus_id:       number | null
+  /** Program this row belongs to (the block's own program). */
+  option_id?:        number | null
+  /** Other programs running this same block (combined classes). */
+  also_program_ids?: number[]
 }
 type ServerModule = {
   module_id:      number
+  /** Selected programs that link this module. */
+  program_ids?:   number[]
   module_order:   number | null
   module_code:    string
   module_name:    string
@@ -70,6 +76,10 @@ type WorkingBlock = {
   activity:        string
   year_of_study:   number | ''
   campus_id:       number | ''
+  /** The block's own program. Null only for legacy payloads. */
+  option_id:        number | null
+  /** Other programs that run this same session (combined classes). Empty = this program only. */
+  also_program_ids: number[]
 }
 
 type BlockIssues = {
@@ -95,7 +105,10 @@ function blockChanged(a: WorkingBlock, b: WorkingBlock): boolean {
   if (CMP_FIELDS.some((f) => a[f] !== b[f])) return true
   const ap = [...a.day_pattern].sort((x, y) => x - y)
   const bp = [...b.day_pattern].sort((x, y) => x - y)
-  return ap.length !== bp.length || ap.some((d, i) => d !== bp[i])
+  if (ap.length !== bp.length || ap.some((d, i) => d !== bp[i])) return true
+  const aa = [...a.also_program_ids].sort((x, y) => x - y)
+  const ba = [...b.also_program_ids].sort((x, y) => x - y)
+  return aa.length !== ba.length || aa.some((p, i) => p !== ba[i])
 }
 
 const ACTIVITY_OPTIONS = ['', 'Teaching', 'Final Exam', 'Lab', 'Tutorial', 'Workshop']
@@ -173,7 +186,7 @@ function blockSummary(b: WorkingBlock): string {
   return label || b.activity || 'Block'
 }
 
-function newDraftBlock(moduleId: number): WorkingBlock {
+function newDraftBlock(moduleId: number, optionId: number | null, alsoProgramIds: number[]): WorkingBlock {
   return {
     _key:        `new-${moduleId}-${Math.random().toString(36).slice(2, 8)}`,
     id:          null,
@@ -188,6 +201,8 @@ function newDraftBlock(moduleId: number): WorkingBlock {
     activity:    '',
     year_of_study:   '',
     campus_id:       '',
+    option_id:   optionId,
+    also_program_ids: alsoProgramIds,
   }
 }
 function serverBlockToWorking(moduleId: number, b: ServerBlock): WorkingBlock {
@@ -207,6 +222,8 @@ function serverBlockToWorking(moduleId: number, b: ServerBlock): WorkingBlock {
     activity:    b.activity ?? '',
     year_of_study:   b.year_of_study ?? '',
     campus_id:       b.campus_id ?? '',
+    option_id:   b.option_id ?? null,
+    also_program_ids: b.also_program_ids ?? [],
   }
 }
 
@@ -316,7 +333,10 @@ function SchedEmpty({ icon: Icon = CalendarClock, title, msg }: { icon?: typeof 
    ════════════════════════════════════════════════════════════ */
 export default function SchedulingPanel() {
   const qc = useQueryClient()
-  const [programId, setProgramId] = useSessionStorage<number | ''>('sched.programId', '')
+  // One or more programs. A module is shown once with the blocks of every
+  // selected program; a block saved here runs for each program that links the module.
+  const [programIds, setProgramIds] = useSessionStorage<number[]>('sched.programIds', [])
+  const programKey = programIds.join(',')
   const [mode,      setMode]      = useSessionStorage<string>('sched.mode', 'Day')
   const [termId,    setTermId]    = useSessionStorage<number | ''>('sched.termId', '')
 
@@ -336,7 +356,7 @@ export default function SchedulingPanel() {
     setWorking({})
     setOriginalIds(new Set())
     setOriginalById(new Map())
-  }, [programId, mode, termId])
+  }, [programKey, mode, termId])
 
   const termsQ = useQuery({ queryKey: ['academic', 'terms'], queryFn: () => academicService.listTerms() })
   const terms = (termsQ.data?.data ?? []) as AcademicTerm[]
@@ -382,9 +402,9 @@ export default function SchedulingPanel() {
   const campuses = (campusesQ.data?.data?.data ?? []) as Array<{ id: number; name: string }>
 
   const schedulesQ = useQuery({
-    queryKey: ['scheduling', programId, mode],
-    queryFn:  () => academicsMgmtService.getSchedules(Number(programId), mode),
-    enabled:  !!programId,
+    queryKey: ['scheduling', programKey, mode],
+    queryFn:  () => academicsMgmtService.getSchedules(programIds, mode),
+    enabled:  programIds.length > 0,
   })
   const rows = (schedulesQ.data?.data?.rows ?? []) as ServerModule[]
 
@@ -412,7 +432,10 @@ export default function SchedulingPanel() {
   const updateBlock = (moduleId: number, key: string, patch: Partial<WorkingBlock>) =>
     setBlocks(moduleId, blocksOf(moduleId).map((b) => b._key === key ? { ...b, ...patch } : b))
   const addBlock = (moduleId: number): string => {
-    const draft = newDraftBlock(moduleId)
+    // New block runs for every selected program that links the module:
+    // the first one owns it, the rest are added as "also taught in".
+    const linked = rows.find((r) => r.module_id === moduleId)?.program_ids ?? programIds
+    const draft = newDraftBlock(moduleId, linked[0] ?? null, linked.slice(1))
     setBlocks(moduleId, [...blocksOf(moduleId), draft])
     return draft._key
   }
@@ -466,8 +489,10 @@ export default function SchedulingPanel() {
         activity:        b.activity   || null,
         year_of_study:   b.year_of_study === '' ? null : Number(b.year_of_study),
         campus_id:       b.campus_id === '' ? null : Number(b.campus_id),
+        option_id:       b.option_id ?? undefined,
+        also_program_ids: b.also_program_ids,
       }))
-      return academicsMgmtService.saveSchedules({ program_id: Number(programId), mode, blocks, delete_ids: deleteIds })
+      return academicsMgmtService.saveSchedules({ program_id: programIds[0] ?? 0, mode, blocks, delete_ids: deleteIds })
     },
     onSuccess: (res) => {
       const d = res.data ?? { created: 0, updated: 0, deleted: 0, failed: [] }
@@ -519,7 +544,7 @@ export default function SchedulingPanel() {
     return m
   }, [campuses])
 
-  const selectedProgramLabel = programOptions.find((o) => o.value === Number(programId))?.label ?? ''
+  const selectedProgramLabels = programIds.map((id) => programOptions.find((o) => Number(o.value) === id)?.label ?? `#${id}`)
 
   // ── Filtered + sorted module list ──
   const sortedModules = useMemo(() => {
@@ -573,9 +598,9 @@ export default function SchedulingPanel() {
         <div className="min-w-0">
           <h2 className="section-title">Module scheduling</h2>
           <p className="section-sub">
-            {programId
+            {programIds.length
               ? 'Pick a module to manage its teaching blocks — schedules open in a focused editor.'
-              : 'Choose a program to begin — every block is scoped to one program at a time.'}
+              : 'Choose one or more programs to begin. Select several to schedule a module across them together.'}
           </p>
         </div>
       </div>
@@ -586,13 +611,11 @@ export default function SchedulingPanel() {
           {/* Program */}
           <div className="min-w-0">
             <label className="label">Program <span className="text-red-500">*</span></label>
-            <RoleGroupedSelect
+            <MultiProgramSelect
               options={programOptions}
-              value={programId === '' ? '' : Number(programId)}
-              onChange={(v) => setProgramId(v ? Number(v) : '')}
-              placeholder="Search & pick a program…"
+              value={programIds}
+              onChange={setProgramIds}
               ariaLabel="Program"
-              groupOrder={[]}
             />
           </div>
 
@@ -624,7 +647,7 @@ export default function SchedulingPanel() {
 
           {/* Actions */}
           <div className="flex items-end gap-2">
-            <button className="btn-secondary" onClick={() => downloadTimetable()} disabled={!programId} title="Export every block to a university-format .xlsx">
+            <button className="btn-secondary" onClick={() => downloadTimetable()} disabled={!programIds.length} title="Export every block to a university-format .xlsx">
               <Download className="w-4 h-4" /> <span className="hidden sm:inline">Export</span>
             </button>
             <button className="btn-secondary" onClick={() => setImportOpen(true)} title="Upload the university timetable spreadsheet">
@@ -641,9 +664,10 @@ export default function SchedulingPanel() {
             </button>
           </div>
         </div>
-        {selectedProgramLabel && (
+        {selectedProgramLabels.length > 0 && (
           <p className="mt-2 text-[11px] text-ink-500">
-            Currently scheduling: <span className="font-semibold text-ink-700 dark:text-ink-200">{selectedProgramLabel}</span>
+            Currently scheduling {selectedProgramLabels.length} program{selectedProgramLabels.length === 1 ? '' : 's'}:{' '}
+            <span className="font-semibold text-ink-700 dark:text-ink-200">{selectedProgramLabels.join(' · ')}</span>
           </p>
         )}
       </div>
@@ -656,7 +680,7 @@ export default function SchedulingPanel() {
       )}
 
       {/* Body */}
-      {!programId ? (
+      {!programIds.length ? (
         <SchedEmpty title="Which program are you scheduling?" msg="Modules, mode, dates and lecturers are all tracked per program. Pick one above to load its modules." />
       ) : schedulesQ.isLoading ? (
         <div className="py-16 flex items-center justify-center text-ink-500 text-[13px]"><Loader2 className="w-4 h-4 animate-spin mr-2" /> Loading schedule…</div>
@@ -742,6 +766,7 @@ export default function SchedulingPanel() {
           instructorById={instructorById}
           campusOptions={campusOptions}
           campusById={campusById}
+          alsoProgramOptions={programOptions}
           termStart={termStart}
           termEnd={termEnd}
           dirtyCount={dirtyCount}
@@ -850,7 +875,7 @@ function ModuleScheduleRow({
    ════════════════════════════════════════════════════════════ */
 function ScheduleModuleModal({
   module: m, mode, blocks, issuesByKey, instructorOptions, instructorById, campusOptions, campusById,
-  termStart, termEnd, dirtyCount, invalidCount, saving,
+  alsoProgramOptions, termStart, termEnd, dirtyCount, invalidCount, saving,
   onAddBlock, onUpdateBlock, onRemoveBlock, onSaveAll, onClose,
 }: {
   module: ServerModule
@@ -861,6 +886,7 @@ function ScheduleModuleModal({
   instructorById: Map<number, { full_name: string; position: string | null }>
   campusOptions: GroupedOption[]
   campusById: Map<number, string>
+  alsoProgramOptions: GroupedOption[]
   termStart: string
   termEnd: string
   dirtyCount: number
@@ -939,6 +965,7 @@ function ScheduleModuleModal({
                 block={editing}
                 instructorOptions={instructorOptions}
                 campusOptions={campusOptions}
+                alsoProgramOptions={alsoProgramOptions}
                 termStart={termStart}
                 termEnd={termEnd}
                 onSave={handleEditorSave}
@@ -968,6 +995,16 @@ function ScheduleModuleModal({
                             : <span className="text-[11px] text-ink-400">Any day</span>}
                           <span className="font-semibold text-[13px] text-ink-900 dark:text-white ml-1">{time}</span>
                           {b.activity && <span className="chip-primary !text-[10px]">{b.activity}</span>}
+                          {(m.program_ids?.length ?? 0) > 1 && b.option_id != null && (
+                            <span className="chip-soft !text-[10px]" title={alsoProgramOptions.find((o) => Number(o.value) === b.option_id)?.label}>
+                              {(alsoProgramOptions.find((o) => Number(o.value) === b.option_id)?.label ?? '').split(' · ')[0] || `#${b.option_id}`}
+                            </span>
+                          )}
+                          {b.also_program_ids.length > 0 && (
+                            <span className="chip-gold !text-[10px]" title="Also taught in these programs">
+                              <Users className="w-3 h-3" /> +{b.also_program_ids.length} program{b.also_program_ids.length === 1 ? '' : 's'}
+                            </span>
+                          )}
                           {b.id === null && <span className="chip-gold !text-[10px]">new</span>}
                         </div>
                         <div className="text-[11.5px] text-ink-500 flex items-center gap-x-3 gap-y-0.5 flex-wrap">
@@ -1025,11 +1062,12 @@ function ScheduleModuleModal({
    BLOCK EDITOR (local draft; commits to working on Save)
    ════════════════════════════════════════════════════════════ */
 function BlockEditor({
-  block, instructorOptions, campusOptions, termStart, termEnd, onSave, onCancel,
+  block, instructorOptions, campusOptions, alsoProgramOptions, termStart, termEnd, onSave, onCancel,
 }: {
   block: WorkingBlock
   instructorOptions: GroupedOption[]
   campusOptions: GroupedOption[]
+  alsoProgramOptions: GroupedOption[]
   termStart: string
   termEnd: string
   onSave: (patch: Partial<WorkingBlock>) => void
@@ -1162,6 +1200,16 @@ function BlockEditor({
         </div>
       </div>
 
+      {/* Combined classes — other programs taking this same session */}
+      <div>
+        <label className="label">Also taught in (same session)</label>
+        <AlsoProgramsPicker
+          options={alsoProgramOptions.filter((o) => Number(o.value) !== d.option_id)}
+          value={d.also_program_ids}
+          onChange={(next) => set({ also_program_ids: next })}
+        />
+      </div>
+
       {/* Footer */}
       <div className="flex items-center gap-2 pt-3 border-t border-ink-100 dark:border-ink-700">
         <button className="btn-secondary ml-auto" onClick={onCancel}>Cancel</button>
@@ -1259,6 +1307,150 @@ function DaysPicker({ value, onChange }: { value: number[]; onChange: (next: num
         document.body,
       )}
     </>
+  )
+}
+
+/* ── Toolbar program picker: one or more programs, with Select all / Clear all ── */
+function MultiProgramSelect({ options, value, onChange, ariaLabel }: { options: GroupedOption[]; value: number[]; onChange: (next: number[]) => void; ariaLabel: string }) {
+  const [open, setOpen] = useState(false)
+  const [q, setQ] = useState('')
+  const rootRef = useRef<HTMLDivElement>(null)
+  const allIds = useMemo(() => options.map((o) => Number(o.value)), [options])
+  const selected = new Set(value)
+  const allSelected = allIds.length > 0 && allIds.every((id) => selected.has(id))
+  const labelOf = (id: number) => options.find((o) => Number(o.value) === id)?.label ?? `#${id}`
+  const visible = useMemo(() => {
+    const needle = q.trim().toLowerCase()
+    return [...options]
+      .filter((o) => !needle || `${o.label} ${o.group ?? ''}`.toLowerCase().includes(needle))
+      .sort((a, b) => (a.group ?? '').localeCompare(b.group ?? '') || a.label.localeCompare(b.label))
+  }, [options, q])
+
+  // Close on outside click or Esc.
+  useEffect(() => {
+    if (!open) return
+    const onDown = (e: MouseEvent) => { if (!rootRef.current?.contains(e.target as Node)) setOpen(false) }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [open])
+
+  const toggle = (id: number) => onChange(selected.has(id) ? value.filter((x) => x !== id) : [...value, id])
+  const summary = value.length === 0
+    ? 'Search & pick programs…'
+    : allSelected ? `All programs (${value.length})`
+    : value.length === 1 ? labelOf(value[0])
+    : `${value.length} programs selected`
+
+  return (
+    <div className="relative" ref={rootRef}>
+      <button
+        type="button"
+        aria-label={ariaLabel}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        className="input input-sm w-full text-left flex items-center justify-between gap-1.5"
+        onClick={() => setOpen((v) => !v)}
+      >
+        <span className={value.length ? 'truncate text-ink-900 dark:text-white' : 'truncate text-ink-400'}>{summary}</span>
+        <ChevronDown className={`w-3.5 h-3.5 text-ink-400 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className="absolute left-0 right-0 top-full mt-1 z-30 rounded-lg border border-ink-200 dark:border-ink-700 bg-white dark:bg-ink-900 shadow-2xl overflow-hidden">
+          <div className="p-2 border-b border-ink-100 dark:border-ink-700 space-y-2">
+            <div className="relative">
+              <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-400" />
+              <input autoFocus className="input input-sm w-full pl-7" placeholder="Search programs…" aria-label="Search programs" value={q} onChange={(e) => setQ(e.target.value)} />
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                className="text-[11.5px] px-2 py-1 rounded-md border border-ink-200 dark:border-ink-700 hover:border-brand hover:text-brand transition-colors"
+                onClick={() => onChange(allSelected ? [] : allIds)}
+              >
+                {allSelected ? 'Clear all' : `Select all (${allIds.length})`}
+              </button>
+              {value.length > 0 && <span className="ml-auto text-[11px] text-ink-500">{value.length} selected</span>}
+            </div>
+          </div>
+          <ul className="max-h-72 overflow-y-auto py-1" role="listbox" aria-multiselectable="true">
+            {visible.map((o) => {
+              const id = Number(o.value)
+              return (
+                <li key={id}>
+                  <label className="flex items-center gap-2 px-3 py-1.5 text-[12.5px] cursor-pointer hover:bg-ink-50 dark:hover:bg-ink-700/30">
+                    <input type="checkbox" checked={selected.has(id)} onChange={() => toggle(id)} />
+                    <span className="truncate text-ink-900 dark:text-ink-100">{o.label}</span>
+                    {o.group && <span className="ml-auto text-[10.5px] text-ink-400 truncate max-w-[40%]">{o.group}</span>}
+                  </label>
+                </li>
+              )
+            })}
+            {visible.length === 0 && <li className="px-3 py-2 text-[12px] text-ink-400">No programs match.</li>}
+          </ul>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* ── Combined classes: pick other programs that run this same session.
+      Inline (not a popover) so it isn't clipped by the modal body. ── */
+function AlsoProgramsPicker({ options, value, onChange }: { options: GroupedOption[]; value: number[]; onChange: (next: number[]) => void }) {
+  const [open, setOpen] = useState(false)
+  const [q, setQ] = useState('')
+  const selected = new Set(value)
+  const labelOf = (id: number) => options.find((o) => Number(o.value) === id)?.label ?? `#${id}`
+  const toggle = (id: number) => onChange(selected.has(id) ? value.filter((x) => x !== id) : [...value, id])
+  const visible = useMemo(() => {
+    const needle = q.trim().toLowerCase()
+    return [...options]
+      .filter((o) => !needle || `${o.label} ${o.group ?? ''}`.toLowerCase().includes(needle))
+      .sort((a, b) => (a.group ?? '').localeCompare(b.group ?? '') || a.label.localeCompare(b.label))
+  }, [options, q])
+
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap gap-1.5">
+        {value.length === 0 && <span className="text-[11.5px] text-ink-400">This program only</span>}
+        {value.map((id) => (
+          <span key={id} className="chip-primary !text-[10.5px] inline-flex items-center gap-1">
+            {labelOf(id)}
+            <button type="button" className="hover:text-red-500" aria-label={`Remove ${labelOf(id)}`} onClick={() => toggle(id)}><X className="w-3 h-3" /></button>
+          </span>
+        ))}
+      </div>
+      <button type="button" className="text-[11.5px] text-brand hover:underline" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+        {open ? 'Hide program list' : value.length ? 'Change programs' : '+ Add programs taught together'}
+      </button>
+      {open && (
+        <div className="rounded-md border border-ink-200 dark:border-ink-700 overflow-hidden">
+          <div className="p-2 border-b border-ink-100 dark:border-ink-700 relative">
+            <Search className="w-3.5 h-3.5 absolute left-4 top-1/2 -translate-y-1/2 text-ink-400" />
+            <input className="input input-sm w-full pl-7" placeholder="Search programs…" aria-label="Search programs" value={q} onChange={(e) => setQ(e.target.value)} />
+          </div>
+          <ul className="max-h-52 overflow-y-auto py-1">
+            {visible.map((o) => {
+              const id = Number(o.value)
+              return (
+                <li key={id}>
+                  <label className="flex items-center gap-2 px-3 py-1.5 text-[12.5px] cursor-pointer hover:bg-ink-50 dark:hover:bg-ink-700/30">
+                    <input type="checkbox" checked={selected.has(id)} onChange={() => toggle(id)} />
+                    <span className="truncate text-ink-900 dark:text-ink-100">{o.label}</span>
+                    {o.group && <span className="ml-auto text-[10.5px] text-ink-400 truncate max-w-[40%]">{o.group}</span>}
+                  </label>
+                </li>
+              )
+            })}
+            {visible.length === 0 && <li className="px-3 py-2 text-[12px] text-ink-400">No programs match.</li>}
+          </ul>
+        </div>
+      )}
+    </div>
   )
 }
 

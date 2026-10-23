@@ -24,6 +24,7 @@ $router->group('/api/me/payroll', function ($router) {
 // Read: VIEW_PAYROLL
 $router->group('/api/hr/payroll', function ($router) {
     $router->get('',                 [HrPayrollController::class, 'index']);
+    $router->get('/rules',           [HrPayrollController::class, 'rules']);
     $router->get('/:emp_id/slips',   [HrPayrollController::class, 'slips']);
 }, [AuthMiddleware::class, new PermissionMiddleware(Permissions::VIEW_PAYROLL)]);
 
@@ -46,6 +47,7 @@ $router->group('/api/hr', function ($router) {
 $router->group('/api/hr', function ($router) {
     $router->post('/config',                    [PayrollConfigController::class, 'update']);
     $router->post('/config/deductions',        [PayrollConfigController::class, 'addDeduction']);
+    $router->put('/config/deductions/:id',      [PayrollConfigController::class, 'updateDeduction']);
     $router->post('/config/deductions/:id',     [PayrollConfigController::class, 'updateDeduction']);
     $router->delete('/config/deductions/:id',  [PayrollConfigController::class, 'deleteDeduction']);
 }, [AuthMiddleware::class, new PermissionMiddleware(Permissions::MANAGE_HR_EMPLOYEES)]);

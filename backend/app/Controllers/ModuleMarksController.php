@@ -10,6 +10,7 @@ use Core\Database;
 use App\Constants\Permissions;
 use App\Helpers\ValidationHelper;
 use App\Helpers\TranscriptPdf;
+use App\Helpers\LevelHelper;
 use App\Helpers\GradingScale;
 use App\Services\AuthService;
 use App\Services\DegreeClassificationService;
@@ -98,6 +99,10 @@ class ModuleMarksController extends BaseController
     /** null = full scope, [] = none, else list of module ids the user may record for. */
     private function teachableModuleIds(Request $request): ?array
     {
+        // Dean / HOD / secretary: the modules in their faculty or department (view and record marks).
+        $inScope = \App\Services\AcademicScopeService::moduleIdsFor((array)($request->param("_auth_user") ?? []));
+        if ($inScope !== null) return $inScope;
+
         if ($this->hasPerm($request, Permissions::MANAGE_MODULE_MARKS)) return null;
         // Delegated to the shared resolver so marks, attendance, the module
         // picker and the teacher portal all agree on what "my modules" means.
@@ -245,10 +250,12 @@ class ModuleMarksController extends BaseController
             // Admin: show every active module — the marks page is the canonical
             // place to record marks, so the picker should never silently hide
             // a module just because nobody is registered yet.
+            // Dean / HOD: only the modules in their faculty or department.
+            $scopeSql = \App\Services\AcademicScopeService::moduleClause((array)($request->param('_auth_user') ?? []), 'm.module_id');
             $rows = $this->db->fetchAll(
                 "SELECT m.module_id, m.module_code, m.module_name, m.level
                  FROM modules m
-                 WHERE m.status = 'active'
+                 WHERE m.status = 'active'{$scopeSql}
                  ORDER BY m.module_code ASC
                  LIMIT 2000",
                 []
@@ -329,7 +336,7 @@ class ModuleMarksController extends BaseController
             $this->error($response, 'Term not found.', 404);
         }
 
-        $roster = $this->buildRoster($moduleId, $termId, $module);
+        $roster = $this->buildRoster($moduleId, $termId, $module, \App\Services\AcademicScopeService::isTeachingOnly((array)($request->param("_auth_user") ?? [])));
 
         // Maxima: the sheet's own saved values when it has any, else the CUR
         // standard 60 + 40. Mirrors how ModulesMarksPage seeds them, so a
@@ -377,7 +384,7 @@ class ModuleMarksController extends BaseController
      * the eligibility fallback when nobody is registered, and the append of
      * anyone already holding a mark.
      */
-    private function buildRoster(int $moduleId, int $termId, array $module): array
+    private function buildRoster(int $moduleId, int $termId, array $module, bool $registeredOnly = false): array
     {
         $rosterCols = "st.id AS student_id, st.regnumber, st.fname, st.lname, st.email,
                        st.gender AS sex, st.program AS student_program, st.std_option AS option_acro,
@@ -422,7 +429,9 @@ class ModuleMarksController extends BaseController
         //   • dep_options.op_id → student.std_option
         // Combined with the module's level + department, this picks up the
         // typical class even before formal module_registrations exist.
-        if (count($roster) === 0) {
+        // Lecturers without a unit see formally registered students only, so a
+        // fallback class list is never shown to them as enrolled.
+        if (count($roster) === 0 && !$registeredOnly) {
             $level = (int)($module['level'] ?? 0);
             $depId = (int)($module['dep_id'] ?? 0);
 
@@ -662,7 +671,7 @@ class ModuleMarksController extends BaseController
         $module['teaching_started_on'] = $offering['start_date'] ?? null;
         $module['teaching_ended_on']   = $offering['end_date']   ?? null;
 
-        $roster = $this->buildRoster($moduleId, $termId, $module);
+        $roster = $this->buildRoster($moduleId, $termId, $module, \App\Services\AcademicScopeService::isTeachingOnly((array)($request->param("_auth_user") ?? [])));
 
         // Workflow status & class-level teaching dates: mode of the saved rows
         // (rows are written together as a batch so they share the same values).
@@ -1574,7 +1583,69 @@ class ModuleMarksController extends BaseController
             $rows = array_merge($rows, $this->remainingCurriculumRows($reg, $student, $rows));
         }
 
+        $rows = $this->pinRowsToLevelNine($rows, $student);
+
+        // Legacy names were stored HTML-escaped ("I &amp; II"). Decode them
+        // once here so the preview shows "&" and the PDF escapes it exactly
+        // once, instead of printing the entity text.
+        foreach ($rows as &$r) {
+            if (isset($r['module_name'])) {
+                $r['module_name'] = html_entity_decode((string)$r['module_name'], ENT_QUOTES | ENT_HTML5, 'UTF-8');
+            }
+        }
+        unset($r);
+
         return [$rows, $totals, $student];
+    }
+
+    /**
+     * A masters or postgraduate student prints one sheet at Level 9.
+     *
+     * The sheet split follows each module's catalogue level, and the legacy
+     * catalogue tags many PGDE modules as Level 8 semesters. That printed
+     * "LEVEL: 8 S1 & S2" and "LEVEL: 8 S3 & S4" on a postgraduate record.
+     * A student counts as postgraduate when their current level is Level 9 or
+     * their option or department is a postgraduate diploma or masters.
+     *
+     * @param  array<int,array<string,mixed>> $rows
+     * @param  array<string,mixed>            $student
+     * @return array<int,array<string,mixed>>
+     */
+    private function pinRowsToLevelNine(array $rows, array $student): array
+    {
+        // The sheet header is read from the name, so the name is fixed here.
+        // The catalogue is only consulted for the id, and it can come back
+        // empty (a failed `levels` query) — the name must not depend on it.
+        $name    = 'Level 9';
+        $levelId = array_search($name, LevelHelper::map(), true);
+
+        $programme = implode(' ', [
+            (string)($student['option_name'] ?? ''),
+            (string)($student['dep_name'] ?? ''),
+        ]);
+        $isPostgraduate = ($levelId !== false && (int)($student['current_level'] ?? 0) === $levelId)
+            || preg_match('/post\s*-?\s*graduate|master|pgde/i', $programme) === 1;
+        if (!$isPostgraduate) {
+            return $rows;
+        }
+
+        // Everything lands on one sheet, so a module expanded into several
+        // level copies by expandRowsByLevel() must keep only its first copy —
+        // otherwise it prints twice and its credits are counted twice on the
+        // sheet's totals. The first copy is the one with `level_repeat` unset.
+        $pinned = [];
+        foreach ($rows as $r) {
+            if (!empty($r['level_repeat'])) {
+                continue;
+            }
+            if ($levelId !== false) {
+                $r['level'] = $levelId;
+            }
+            $r['level_name'] = $name;
+            $pinned[] = $r;
+        }
+
+        return $pinned;
     }
 
     /**
@@ -1773,8 +1844,9 @@ class ModuleMarksController extends BaseController
             // Identity is the normalised code alone — the catalogue carries the
             // same module under different levels ("NALP4322" at level 3 and
             // "NALP 4322" at level 4); keying on level printed it twice and
-            // counted its credits twice.
-            $key = strtoupper((string)preg_replace('/\s+/', '', $raw));
+            // counted its credits twice. Underscores count as noise too: the
+            // import wrote "PGDE6393_" beside "PGDE6393" for the same internship.
+            $key = strtoupper((string)preg_replace('/[\s_]+/', '', $raw));
             // A row with no code is not a duplicate of the next codeless row —
             // keep those apart by module_id rather than merging them all.
             if ($r['module_code'] === '') {
@@ -1943,10 +2015,10 @@ class ModuleMarksController extends BaseController
         ], $show ? 'Module will print on transcripts.' : 'Module will not print on transcripts.');
     }
 
-    /** Module identity used everywhere here: code, upper-cased, spaces stripped. */
+    /** Module identity used everywhere here: code, upper-cased, spaces and underscores stripped. */
     private static function identOf(mixed $code): string
     {
-        return strtoupper((string)preg_replace('/\s+/', '', (string)$code));
+        return strtoupper((string)preg_replace('/[\s_]+/', '', (string)$code));
     }
 
     /** `student.std_option` is free text that usually starts with the id. */

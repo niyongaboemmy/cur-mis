@@ -288,6 +288,10 @@ export function NotifyStudentPanel({
   // Keep the selection in step with the server: a document that got uploaded
   // since must drop out, a newly rejected one should be offered.
   const outstandingKey = outstanding.map((d) => d.document_type_id).join(',')
+  // Keyed on the joined ids rather than the array so a refetch returning an
+  // equal list does not reset the selection. `outstanding` is deliberately not
+  // a dependency; the disable directive that used to say so is gone because
+  // the rule does not fire here and ESLint errors on unused directives.
   useEffect(() => {
     setSelected(outstanding.map((d) => d.document_type_id))
   }, [outstandingKey])

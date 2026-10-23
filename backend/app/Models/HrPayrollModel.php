@@ -10,7 +10,9 @@ class HrPayrollModel extends BaseModel
     protected array $fillable = [
         'emp_id', 'pay_month', 'period_year', 'period_month',
         'basic_salary', 'housing_allowance', 'transport_allowance', 'other_allowances',
-        'gross', 'pension', 'rama', 'maternity', 'cbhi', 'other_deductions', 'tax', 'net', 'status',
+        'base_gross', 'responsibility_allowance', 'arrears',
+        'gross', 'pension', 'rama', 'maternity', 'maternity_base', 'cbhi', 'other_deductions', 'tax', 'net', 'status',
+        'employer_pension', 'employer_maternity', 'employer_rama', 'employer_occupational', 'gross_cost',
     ];
 
     public function findByPeriod(int $empId, int $year, int $month): array|false
@@ -26,7 +28,11 @@ class HrPayrollModel extends BaseModel
         $sql    = "SELECT
                      id, emp_id, pay_month, period_year, period_month,
                      basic_salary, housing_allowance, transport_allowance, other_allowances,
+                     base_gross, responsibility_allowance, arrears, maternity_base,
                      gross        AS gross_salary,
+                     pension      AS pension_employee,
+                     maternity    AS maternity_employee,
+                     rama         AS rama_employee,
                      tax          AS paye,
                      (pension + rama + maternity) AS rssb,
                      cbhi,

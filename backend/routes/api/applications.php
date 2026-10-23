@@ -47,6 +47,7 @@ $router->get('/api/portal/intakes', [ApplicationPortalController::class, 'getInt
 $router->get('/api/portal/faculties',                            [ApplicationPortalController::class, 'getFaculties']);
 $router->get('/api/portal/faculties/:faculty_id/departments',     [ApplicationPortalController::class, 'getFacultyDepartments']);
 $router->get('/api/portal/faculties/:faculty_id/requirements',   [ApplicationPortalController::class, 'getFacultyRequirements']);
+$router->get('/api/portal/departments/:department_id/options',   [ApplicationPortalController::class, 'getDepartmentOptions']);
 $router->get('/api/portal/programs',                             [ApplicationPortalController::class, 'getPrograms']);
 $router->get('/api/portal/levels',                               [ApplicationPortalController::class, 'getLevels']);
 $router->get('/api/portal/document-types',                       [ApplicationPortalController::class, 'getDocumentTypes']);

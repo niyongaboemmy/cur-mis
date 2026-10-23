@@ -54,6 +54,7 @@ const fmtNumber = (n: number) => new Intl.NumberFormat('en-US').format(Math.roun
 
 export default function ApplicationDetailsView({
   application,
+  onEdit,
   onBack,
 }: ApplicationDetailsViewProps) {
   const [previewDoc, setPreviewDoc] = useState<any>(null);
@@ -374,6 +375,16 @@ export default function ApplicationDetailsView({
               title="Programme Selection"
               sub="The programme you applied for and how you'll study it."
               icon={Sparkles}
+              action={
+                isRejected ? (
+                  <button
+                    onClick={onEdit}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-semibold text-primary-600 hover:text-primary-700 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-lg transition-colors"
+                  >
+                    Edit
+                  </button>
+                ) : undefined
+              }
             />
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-5 mt-6">
               <InfoGroup

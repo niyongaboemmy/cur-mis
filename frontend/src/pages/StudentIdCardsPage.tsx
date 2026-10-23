@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import {
@@ -36,6 +36,9 @@ const STATES = [
   { value: "revoked", label: "Card revoked" },
 ] as const;
 
+// Issue years offered in the year filter: the current year and the four before it.
+const YEARS = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i);
+
 const STATE_STYLES: Record<StudentIdRosterRow["card_state"], string> = {
   none: "bg-ink-100 text-ink-600 dark:bg-ink-800 dark:text-ink-300",
   active: "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400",
@@ -60,14 +63,18 @@ export default function StudentIdCardsPage() {
   const [page, setPage] = useState(1);
   const [keyword, setKeyword] = useState("");
   const [searchInput, setSearchInput] = useState("");
-  const [state, setState] = useState("");
+  const [state, setState] = useState("active");
+  const [year, setYear] = useState("");
   const [validityYears, setValidityYears] = useState(4);
   const [selected, setSelected] = useState<number[]>([]);
 
   const rosterQ = useQuery({
-    queryKey: ["student-ids", "roster", page, keyword, state],
+    queryKey: ["student-ids", "roster", page, keyword, state, year],
     queryFn: ({ signal }) =>
-      studentIdService.roster({ page, per_page: 25, keyword, state }, signal),
+      studentIdService.roster(
+        { page, per_page: 25, keyword, state, year: Number(year) || 0 },
+        signal,
+      ),
     placeholderData: keepPreviousData,
   });
 
@@ -148,9 +155,20 @@ export default function StudentIdCardsPage() {
       allSelected ? s.filter((id) => !selectableIds.includes(id)) : [...new Set([...s, ...selectableIds])],
     );
 
+  // Search runs as the user types: the term is applied 300ms after the last
+  // keystroke, so the roster isn't re-queried on every letter.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setKeyword(searchInput.trim());
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+
+  // Enter applies the term straight away instead of waiting for the delay.
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    setKeyword(searchInput);
+    setKeyword(searchInput.trim());
     setPage(1);
   };
 
@@ -191,6 +209,19 @@ export default function StudentIdCardsPage() {
             >
               {STATES.map((s) => (
                 <option key={s.value} value={s.value}>{s.label}</option>
+              ))}
+            </select>
+
+            <label className="sr-only" htmlFor="card-year">Issue year</label>
+            <select
+              id="card-year"
+              className="input w-full sm:w-36"
+              value={year}
+              onChange={(e) => { setYear(e.target.value); setPage(1); setSelected([]); }}
+            >
+              <option value="">All years</option>
+              {YEARS.map((y) => (
+                <option key={y} value={y}>{y}</option>
               ))}
             </select>
           </div>

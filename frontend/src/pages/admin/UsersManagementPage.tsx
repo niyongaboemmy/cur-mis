@@ -819,7 +819,7 @@ export default function UsersManagementPage() {
       {/* Help Modal */}
       {showHelpModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 dark:bg-black/70 backdrop-blur-sm p-4">
-          <div className="w-[97%] h-[90vh] max-h-[90vh] bg-white dark:bg-ink-800 rounded-xl shadow-2xl flex flex-col">
+          <div className="w-full h-full bg-white dark:bg-ink-800 rounded-xl shadow-2xl flex flex-col">
             {/* Modal Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-ink-100 dark:border-ink-700 shrink-0">
               <div className="flex items-center gap-2">
@@ -839,7 +839,7 @@ export default function UsersManagementPage() {
             <div className="flex-1 overflow-hidden bg-white dark:bg-ink-900">
               <iframe
                 src="https://cur.ac.rw/umis/users_help/index.php"
-                className="w-full h-full border-none"
+                className="block w-full h-full border-0 bg-white"
                 title="User Management Help Portal"
               />
             </div>

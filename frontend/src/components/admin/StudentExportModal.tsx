@@ -69,6 +69,13 @@ export default function StudentExportModal({
     return out
   }, [groups])
 
+  // Every column the server knows, in picker order. Used for the complete
+  // export when nothing has been ticked.
+  const allColumnKeys: string[] = useMemo(
+    () => groups.flatMap((g) => g.columns.map((c) => c.key)),
+    [groups],
+  )
+
   // ── Local state ─────────────────────────────────────────────
   const [tab, setTab] = useState<Tab>('templates')
   // The currently selected built-in / saved template (drives the CSV
@@ -169,15 +176,24 @@ export default function StudentExportModal({
   // When a template is active we hand its id to the backend so its
   // own column order + header overrides are honoured. Otherwise we
   // ship the raw picked list and the backend uses canonical labels.
+  // On the Custom columns tab with nothing ticked, the download is the
+  // complete export: every column the server offers.
+  const isCompleteExport = tab === 'custom' && pickedOrder.length === 0
   const canExport =
-    tab === 'templates' ? activeTemplateId != null : pickedOrder.length > 0
+    tab === 'templates'
+      ? activeTemplateId != null
+      : pickedOrder.length > 0 || allColumnKeys.length > 0
 
   const onExport = () => {
     if (!canExport) return
     const url =
       tab === 'templates' && activeTemplateId != null
         ? studentService.exportUrl({ template_id: activeTemplateId, filters, format })
-        : studentService.exportUrl({ columns: pickedOrder, filters, format })
+        : studentService.exportUrl({
+            columns: isCompleteExport ? allColumnKeys : pickedOrder,
+            filters,
+            format,
+          })
     // A plain anchor click triggers the browser's native download
     // flow, including the Content-Disposition filename from the
     // server — much cleaner than a fetch-and-blob round-trip.
@@ -256,7 +272,8 @@ export default function StudentExportModal({
               className="btn-primary flex items-center gap-2"
             >
               <Download className="w-4 h-4" />
-              Download {format === 'xlsx' ? 'Excel' : 'CSV'}
+              {isCompleteExport ? 'Download complete ' : 'Download '}
+              {format === 'xlsx' ? 'Excel' : 'CSV'}
             </button>
           </div>
         </div>
@@ -418,7 +435,7 @@ export default function StudentExportModal({
             </div>
             {pickedOrder.length === 0 ? (
               <p className="text-[12px] text-ink-400">
-                Tick columns below to start building your export.
+                Tick columns below to build your export. Leave them unticked and the download includes every column.
               </p>
             ) : (
               <div className="flex flex-wrap gap-1.5">

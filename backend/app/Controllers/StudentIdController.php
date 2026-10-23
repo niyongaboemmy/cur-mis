@@ -43,6 +43,7 @@ class StudentIdController extends BaseController
         $result = $this->model->roster([
             'keyword'   => (string) ($request->query('keyword') ?? ''),
             'state'     => (string) ($request->query('state') ?? ''),
+            'year'      => (int) ($request->query('year') ?? 0),
             'campus'    => (string) ($request->query('campus') ?? ''),
             'option_id' => (int) ($request->query('option_id') ?? 0),
         ], $page, $perPage);
@@ -57,7 +58,7 @@ class StudentIdController extends BaseController
                 'total'        => $total,
                 'last_page'    => (int) max(1, ceil($total / $perPage)),
             ],
-        ], 'ID card roster fetched.');
+        ], 'ID card list fetched.');
     }
 
     // ── POST /api/student-ids/batch-issue ─────────────────────────────────────
@@ -253,6 +254,9 @@ class StudentIdController extends BaseController
             // Unknown or missing falls back to the default inside the helper,
             // so a stale bookmark prints at the standard size instead of 500ing.
             'size'       => (string) ($request->query('size') ?? ''),
+            // The preview is a look at the card, not a print run: show the
+            // front alone. Printing still gets both faces.
+            'front_only' => (bool) $request->query('preview'),
         ];
 
         // Always try to embed as a data URI first — this is the only approach

@@ -293,6 +293,23 @@ class ApplicationPortalController extends BaseController
     }
 
     /**
+     * GET /api/portal/departments/:department_id/options
+     */
+    public function getDepartmentOptions(Request $request, Response $response): never
+    {
+        $departmentId = (int)$request->param('department_id');
+        $db = Database::getInstance();
+
+        // Query options table for the given department
+        $rows = $db->fetchAll(
+            "SELECT id, name FROM `options` WHERE department_id = ? AND is_active = 1 ORDER BY name ASC",
+            [$departmentId]
+        );
+
+        $this->success($response, $rows, 'Department options fetched successfully.');
+    }
+
+    /**
      * GET /api/portal/faculties/:faculty_id/requirements
      */
     public function getFacultyRequirements(Request $request, Response $response): never

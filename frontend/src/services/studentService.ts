@@ -742,6 +742,24 @@ export const studentService = {
     a.remove()
   },
 
+  /** Excel workbook grouped by the academic year in each registration number.
+   *  Backed by GET /api/students/export-by-academic-year, which applies the same
+   *  list filters as `exportUrl`. Always xlsx, so there is no format argument. */
+  exportByAcademicYearUrl: (params: {
+    filters?: Record<string, string | number | undefined>
+  }) => {
+    const token  = useAuthStore.getState().token
+    const base   = (import.meta.env.VITE_API_URL ?? '') + '/api'
+    const search = new URLSearchParams()
+    const filters = withGlobalScopes(params.filters ?? {})
+    for (const [k, v] of Object.entries(filters)) {
+      if (v == null || v === '') continue
+      search.set(k, String(v))
+    }
+    if (token) search.set('token', token)
+    return `${base}/students/export-by-academic-year?${search.toString()}`
+  },
+
   show: (id: number | string, signal?: AbortSignal) =>
     api.get<Student>(`/api/students/${id}`, {}, signal),
 
@@ -960,6 +978,8 @@ export const studentService = {
       country?:            string
       expiry_status?:      '' | 'active' | 'expiring' | 'expired' | 'missing'
       has_visa_document?:  '' | 'yes' | 'no'
+      acc_year?:           string
+      student_state?:      string
     } = {},
     signal?: AbortSignal,
   ) => {
@@ -994,6 +1014,7 @@ export const studentService = {
       facets: {
         program: Array<{ value: string | number; label: string }>
         country: Array<{ value: string; label: string }>
+        all_academic_years?: string[]
       }
       /** Legacy keys kept for backwards-compatibility with older callers. */
       students: any[]
@@ -1010,6 +1031,8 @@ export const studentService = {
     country?:           string
     expiry_status?:     string
     has_visa_document?: string
+    acc_year?:          string
+    student_state?:     string
   } = {}) => {
     const token = useAuthStore.getState().token
     const base  = (import.meta.env.VITE_API_URL ?? '') + '/api'

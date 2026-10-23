@@ -9,6 +9,7 @@ use Core\Response;
 use App\Models\HrEmployeeModel;
 use App\Models\UserModel;
 use App\Helpers\ValidationHelper;
+use App\Services\AcademicScopeService;
 
 class HrEmployeeController extends BaseController
 {
@@ -256,6 +257,18 @@ class HrEmployeeController extends BaseController
             $bindings   = array_merge($bindings, array_fill(0, 6, "%$search%"));
         }
 
+        // Dean / HOD: only staff placed in their faculty or department unit.
+        $scope    = AcademicScopeService::forUser((array)($request->param('_auth_user') ?? []));
+        $staffIds = AcademicScopeService::staffUserIds($scope);
+        if ($staffIds !== null) {
+            if ($staffIds === []) {
+                $clauses[] = '1=0';
+            } else {
+                $clauses[]  = 'e.user_id IN (' . implode(',', array_fill(0, count($staffIds), '?')) . ')';
+                $bindings   = array_merge($bindings, $staffIds);
+            }
+        }
+
         // account_status filter — 'Terminated' catches Terminated + NULL + any unknown value
         $statusVal = $request->query('status') ?? $request->query('account_status');
         if ($statusVal === 'Terminated') {
@@ -282,6 +295,15 @@ class HrEmployeeController extends BaseController
         if ($deptVal !== null && $deptVal !== '') {
             $clauses[]  = "e.employee_post = ?";
             $bindings[] = $deptVal;
+        }
+
+        // staff category filter: Academic | Administrative | unclassified (not yet set)
+        $categoryVal = $request->query('staff_category');
+        if ($categoryVal === 'unclassified') {
+            $clauses[] = "(e.staff_category IS NULL OR e.staff_category = '')";
+        } elseif (in_array($categoryVal, ['Academic', 'Administrative'], true)) {
+            $clauses[]  = "e.staff_category = ?";
+            $bindings[] = $categoryVal;
         }
 
         // position filter
@@ -330,6 +352,7 @@ class HrEmployeeController extends BaseController
               e.area_specialization AS area_of_specialization,
               e.foreign_degree_equivalence,
               e.faculty,
+              e.staff_category,
               'employee' AS source
             FROM employees e
             $where
@@ -371,6 +394,7 @@ class HrEmployeeController extends BaseController
               e.employee_phone,
               e.employee_post,
               e.faculty,
+              e.staff_category,
               e.employee_status,
               e.account_status,
               e.salary
@@ -395,6 +419,17 @@ class HrEmployeeController extends BaseController
 
         if (!$row) {
             $this->error($response, 'Employee not found', 404);
+        }
+
+        $scope    = AcademicScopeService::forUser((array)($request->param('_auth_user') ?? []));
+        $staffIds = AcademicScopeService::staffUserIds($scope);
+        if ($staffIds !== null) {
+            // selectClause() does not return user_id, so read it separately.
+            $owner   = $db->fetchOne('SELECT user_id FROM employees WHERE employee_id = ? LIMIT 1', [$id]);
+            $ownerId = (int)($owner['user_id'] ?? 0);
+            if (!in_array($ownerId, $staffIds, true)) {
+                $this->error($response, 'Employee not found', 404);
+            }
         }
 
         $this->success($response, $row, 'Employee details fetched.');

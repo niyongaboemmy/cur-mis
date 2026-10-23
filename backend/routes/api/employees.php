@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Controllers\HrEmployeeController;
 use App\Controllers\StaffQualificationController;
+use App\Controllers\StaffCategoryController;
 use App\Middleware\AuthMiddleware;
 use App\Middleware\PermissionMiddleware;
 use App\Constants\Permissions;
@@ -18,6 +19,12 @@ $router->group('/api/employees', function ($router) {
     $router->get('',       [HrEmployeeController::class, 'index']);
     $router->get('/:id',   [HrEmployeeController::class, 'show']);
 }, [AuthMiddleware::class, new PermissionMiddleware(Permissions::VIEW_HR_EMPLOYEES)]);
+
+// CUR staff categories (Academic / Administrative). Registered before /:id so the
+// literal path is not read as an employee id.
+$router->group('/api/employees', function ($router) {
+    $router->post('/staff-categories', [StaffCategoryController::class, 'sync']);
+}, [AuthMiddleware::class, new PermissionMiddleware(Permissions::MANAGE_HR_EMPLOYEES)]);
 
 // Write: requires MANAGE_HR_EMPLOYEES
 $router->group('/api/employees', function ($router) {

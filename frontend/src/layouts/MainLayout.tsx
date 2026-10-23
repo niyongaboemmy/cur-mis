@@ -38,11 +38,15 @@ import {
   useState,
 } from "react";
 import TopBar from "@/components/layout/TopBar";
+import LaunchNotificationsDigest from "@/components/layout/LaunchNotificationsDigest";
 import BlueBanner from "@/components/layout/BlueBanner";
 
 import Logo from "@/components/brand/Logo";
 // import AiChatWidget from "@/components/layout/AiChatWidget"; // re-enable when ANTHROPIC_API_KEY is set
 import { useCurrentUser } from "@/hooks/useAuth";
+import { useAcademicScope } from "@/hooks/useAcademicScope";
+import ScopeGate from "@/components/layout/ScopeGate";
+import ModuleRequestGate from "@/components/layout/ModuleRequestGate";
 import { useSystemBasics } from "@/hooks/useSystemBasics";
 
 import {
@@ -101,13 +105,58 @@ type NavNode = {
   children?: NavChild[];
 };
 
+/**
+ * Top-level groups hidden from Dean / Head of Department accounts. Academic
+ * and staff menus stay visible; the backend limits the data to their scope.
+ */
+const SCOPED_HIDDEN_NAV_IDS = new Set([
+  "finance",
+  "admissions",
+  "hr-management",
+  // Institution-wide metrics: not shown to Dean / HOD accounts.
+  "campus-statistics",
+  "support-reporting",
+  // Areas the Dean / HOD scope does not cover yet (the server refuses them).
+  "my-payroll",
+  "my-service-requests",
+  "services",
+]);
+
+/** Menu links (by path) hidden from Dean / HOD accounts for the same reason. */
+const SCOPED_HIDDEN_PATHS = [
+  "/students/id-cards",
+  "/documents/generate",
+  "/me/payroll",
+  // Deliberation and revaluations stay with the exam office.
+  "/exams/deliberation",
+  "/exams/revaluations",
+  "/academic/transcript",
+  "/academic/certificates",
+  "/academic/system-documents",
+  "/academic/graduands",
+  "/service",
+  "/finance",
+  "/my-finance",
+];
+
 const NAV_TREE: NavNode[] = [
   { id: "home", label: "Home", icon: Home, to: "/" },
+  // Admin and Dean / HOD: place lecturers (faculty, department, option).
+  { id: "lecturer-placement", label: "Lecturers", icon: UserIcon, to: "/lecturers" },
   {
     id: "campus-statistics",
     label: "Campus Statistics",
     icon: LayoutDashboard,
     action: "campus-statistics",
+    permissions: [PERMISSIONS.VIEW_DASHBOARD],
+    // Admin metrics only — hide from external portal roles.
+    hideForRoles: ["student", "applicant"],
+  },
+  {
+    id: "support-reporting",
+    label: "Support & Reporting",
+    icon: LayoutDashboard,
+    action: "support-reporting",
     permissions: [PERMISSIONS.VIEW_DASHBOARD],
     // Admin metrics only — hide from external portal roles.
     hideForRoles: ["student", "applicant"],
@@ -176,6 +225,12 @@ const NAV_TREE: NavNode[] = [
         showWhenTeaching: true,
       },
       {
+        to: "/my-students",
+        label: "My students",
+        permissions: [PERMISSIONS.ACCESS_TEACHER_PORTAL],
+        showWhenTeaching: true,
+      },
+      {
         to: "/attendance",
         label: "Attendance",
         permissions: [PERMISSIONS.RECORD_ATTENDANCE, PERMISSIONS.VIEW_ATTENDANCE],
@@ -194,13 +249,12 @@ const NAV_TREE: NavNode[] = [
     hideForRoles: ["student", "applicant"],
   },
   {
-    // Self-service leave — any staff member with REQUEST_LEAVE can file and
-    // track their own leave requests. Hidden from students/applicants.
+    // Self-service leave — opens the same PHP leave app as HR → Leave, for every
+    // staff account. Hidden from students/applicants.
     id: "my-leave",
     label: "My Leave",
     icon: CalendarDays,
     to: "/me/leave",
-    permissions: [PERMISSIONS.REQUEST_LEAVE],
     hideForRoles: ["student", "applicant"],
   },
   {
@@ -259,46 +313,24 @@ const NAV_TREE: NavNode[] = [
     ],
     children: [
       {
-        to: "/hr/staff",
-        label: "All staff",
-        permissions: [PERMISSIONS.VIEW_HR_EMPLOYEES],
-      },
-      {
-        to: "/hr/payroll",
-        label: "Payroll",
+        to: "/hr/payroll-system",
+        label: "Payroll System",
         permissions: [PERMISSIONS.VIEW_PAYROLL, PERMISSIONS.MANAGE_PAYROLL],
       },
       {
-        to: "/hr/payments",
-        label: "Salary",
-        permissions: [PERMISSIONS.VIEW_PAYROLL, PERMISSIONS.MANAGE_PAYROLL],
-      },
-      {
-        to: "/hr/leave",
+        to: "/hr/leave-system",
         label: "Leave",
         permissions: [
           PERMISSIONS.VIEW_HR_EMPLOYEES,
           PERMISSIONS.VIEW_LEAVE_REQUESTS,
           PERMISSIONS.MANAGE_LEAVE_REQUESTS,
-        ],
-      },
-      {
-        to: "/hr/leave/approvals",
-        label: "Leave Approvals",
-        permissions: [
           ...LEAVE_STAGE_PERMISSIONS,
-          PERMISSIONS.MANAGE_LEAVE_REQUESTS,
         ],
       },
       {
         to: "/hr/appraisals",
         label: "Appraisals",
         permissions: [PERMISSIONS.VIEW_APPRAISALS, PERMISSIONS.VIEW_HR_EMPLOYEES],
-      },
-      {
-        to: "/hr/settings",
-        label: "Payroll Settings",
-        permissions: [PERMISSIONS.MANAGE_HR_EMPLOYEES],
       },
       {
         to: "/registrar/report",
@@ -394,6 +426,8 @@ const NAV_TREE: NavNode[] = [
       PERMISSIONS.MANAGE_ACADEMIC_TERMS,
       PERMISSIONS.VIEW_TIMETABLE,
       PERMISSIONS.MANAGE_TIMETABLE,
+      PERMISSIONS.VIEW_GRADUANDS,
+      PERMISSIONS.MANAGE_GRADUANDS,
     ],
     children: [
       // Student self-service — opens the same Program & Marks view that
@@ -452,6 +486,16 @@ const NAV_TREE: NavNode[] = [
         label: "Scheduling",
         permissions: [
           PERMISSIONS.MANAGE_MODULE_SCHEDULES,
+        ],
+        hideForRoles: ["student", "applicant"],
+      },
+      // Graduation list — opens straight on the roster (see GraduandManagementPage).
+      {
+        to: "/academic/graduands?tab=list",
+        label: "Graduation List",
+        permissions: [
+          PERMISSIONS.VIEW_GRADUANDS,
+          PERMISSIONS.MANAGE_GRADUANDS,
         ],
         hideForRoles: ["student", "applicant"],
       },
@@ -550,14 +594,6 @@ const NAV_TREE: NavNode[] = [
         permissions: [PERMISSIONS.MANAGE_REVALUATIONS],
       },
       {
-        to: "/academic/graduands",
-        label: "Graduand list",
-        permissions: [
-          PERMISSIONS.VIEW_GRADUANDS,
-          PERMISSIONS.MANAGE_GRADUANDS,
-        ],
-      },
-      {
         to: "/academic/transcript-requests",
         label: "Transcripts",
         permissions: [PERMISSIONS.MANAGE_TRANSCRIPT_REQUESTS],
@@ -642,6 +678,15 @@ const NAV_TREE: NavNode[] = [
         to: "/finance",
         label: "Overview",
         permissions: [PERMISSIONS.VIEW_FINANCE_OVERVIEW],
+      },
+      {
+        to: "/finance/online-payments",
+        label: "Online Payments",
+        permissions: [
+          PERMISSIONS.VIEW_ONLINE_PAYMENTS_HISTORY,
+          PERMISSIONS.VIEW_MOBILE_PAYMENTS,
+          PERMISSIONS.MANAGE_FINANCE,
+        ],
       },
       {
         to: "/finance/billing",
@@ -782,6 +827,13 @@ const ADMIN_TREE: NavNode[] = [
     label: "Users",
     icon: UserIcon,
     to: "/users",
+    permissions: [PERMISSIONS.MANAGE_USERS],
+  },
+  {
+    id: "academic-scope",
+    label: "Academic Scope",
+    icon: UserIcon,
+    to: "/academic-scope",
     permissions: [PERMISSIONS.MANAGE_USERS],
   },
   {
@@ -1078,9 +1130,17 @@ const ROUTE_TITLES: Record<string, { title: string; sub?: string }> = {
     title: "My Exams",
     sub: "Exam rooms, candidates and attendance",
   },
+  "/hr/payroll-system": {
+    title: "Payroll System",
+    sub: "Payroll, salary and payroll settings",
+  },
   "/hr/payments": {
     title: "Salary Payments",
     sub: "Disbursement history and payment records",
+  },
+  "/hr/leave-system": {
+    title: "Leave",
+    sub: "Leave requests, approvals and balances",
   },
   "/hr/leave": {
     title: "Leave Management",
@@ -1294,6 +1354,24 @@ export default function MainLayout() {
   const [query, setQuery] = useState("");
   const [scrolled, setScrolled] = useState(false);
   const [campusStatisticsOpen, setCampusStatisticsOpen] = useState(false);
+  const [supportReportingOpen, setSupportReportingOpen] = useState(false);
+
+  // Campus Statistics and Support & Reporting render inside the content column
+  // (under the top bar, beside the sidebar), like the Payroll System page.
+  const embedded = campusStatisticsOpen
+    ? { title: "Campus Statistics", src: "https://cur.ac.rw/umis/documents/registrar_report/campus_statistics.php" }
+    : supportReportingOpen
+      ? { title: "Support & Reporting", src: "https://cur.ac.rw/umis/documents/registrar_report/index.php" }
+      : null;
+  const closeEmbedded = () => {
+    setCampusStatisticsOpen(false);
+    setSupportReportingOpen(false);
+  };
+  // Navigating to another page should leave the embedded panel.
+  useEffect(() => {
+    setCampusStatisticsOpen(false);
+    setSupportReportingOpen(false);
+  }, [location.pathname]);
 
   const initiallyOpen = useMemo<Set<string>>(() => {
     const set = new Set<string>();
@@ -1353,6 +1431,14 @@ export default function MainLayout() {
   );
 
   const { user } = useAuthStore();
+  const { scope: academicScope, refresh: refreshScope } = useAcademicScope();
+  // A lecturer with no faculty or department sees students only under My students.
+  const teachingOnly =
+    !!user &&
+    String(user.role ?? "").toLowerCase() === "lecturer" &&
+    !isSuperadmin(user) &&
+    !(user.permissions ?? []).includes(PERMISSIONS.MANAGE_USERS) &&
+    !academicScope.scoped;
 
   const hasAccess = useCallback(
     (perms?: string[]) => {
@@ -1378,16 +1464,30 @@ export default function MainLayout() {
 
   const isVisible = useCallback(
     (node: {
+      id?: string;
+      to?: string;
       roles?: string[];
       permissions?: string[];
       hideForRoles?: string[];
       showWhenTeaching?: boolean;
     }) => {
       if (node.hideForRoles?.includes(user?.role ?? "")) return false;
+      // Dean / Head of Department: finance, admissions and HR are outside their scope.
+      if (teachingOnly && (node.id === "students-group" || node.to?.startsWith("/students"))) return false;
+      // Lecturers do not manage system settings, grading or system documents.
+      if (teachingOnly && (node.id === "system-settings" || ["/settings", "/academic/grading-scale", "/academic/system-documents"].some((p) => node.to?.startsWith(p)))) return false;
+      if (node.id === "lecturer-placement") {
+        const perms: string[] = user?.permissions ?? [];
+        return academicScope.scoped || isSuperadmin(user) || perms.includes(PERMISSIONS.MANAGE_USERS);
+      }
+      if (academicScope.scoped && node.id && SCOPED_HIDDEN_NAV_IDS.has(node.id)) return false;
+      // Dean / HOD: year and term setup is institution-wide, not theirs to change.
+      if (academicScope.scoped && node.to?.includes("tab=years-terms")) return false;
+      if (academicScope.scoped && node.to && SCOPED_HIDDEN_PATHS.some((p) => node.to!.includes(p))) return false;
       if (node.showWhenTeaching && user?.is_teaching) return matchesRoles(node.roles);
       return matchesRoles(node.roles) && hasAccess(node.permissions);
     },
-    [matchesRoles, hasAccess, user],
+    [matchesRoles, hasAccess, user, academicScope],
   );
 
   const filtered = useMemo<NavNode[]>(() => {
@@ -1427,7 +1527,7 @@ export default function MainLayout() {
     };
 
     return filterTree(NAV_TREE);
-  }, [query, hasAccess, user]);
+  }, [query, hasAccess, user, isVisible]);
 
   const filteredAdmin = useMemo<NavNode[]>(() => {
     const q = query.trim().toLowerCase();
@@ -1435,6 +1535,8 @@ export default function MainLayout() {
 
     const filterTree = (tree: NavNode[]) => {
       if (isApplicant) return [];
+      // Dean / HOD accounts get no administration menus (services, settings, logs, users).
+      if (academicScope.scoped) return [];
       return tree
         .filter((n) => hasAccess(n.permissions))
         .map((n) => {
@@ -1467,13 +1569,17 @@ export default function MainLayout() {
     };
 
     return filterTree(ADMIN_TREE);
-  }, [query, hasAccess, user]);
+  }, [query, hasAccess, user, isVisible]);
 
   const headerMeta = ROUTE_TITLES[location.pathname] ?? { title: "CUR-MIS" };
   const sidebarWidth = collapsed ? 72 : 240;
 
   return (
     <div className="h-screen flex flex-col bg-[rgb(var(--bg-app))] text-ink-800 dark:text-ink-100 overflow-hidden">
+      {(academicScope.needs_choice || academicScope.waiting) && (
+        <ScopeGate scope={academicScope} onSubmitted={refreshScope} />
+      )}
+      <ModuleRequestGate />
       {/* Blue banner */}
       <BlueBanner />
 
@@ -1540,6 +1646,7 @@ export default function MainLayout() {
               activeUrl={activeUrl}
               onToggle={toggleGroup}
               onCampusStatisticsOpen={() => setCampusStatisticsOpen(true)}
+              onSupportReportingOpen={() => setSupportReportingOpen(true)}
             />
           ))}
 
@@ -1617,6 +1724,8 @@ export default function MainLayout() {
           }
         />
 
+        <LaunchNotificationsDigest />
+
         {/* Scrollable page content (fills remaining height) */}
         <motion.main
           key={location.pathname}
@@ -1633,57 +1742,36 @@ export default function MainLayout() {
           // background before they stuck.
           className="flex-1 overflow-y-auto px-5 sm:px-6 lg:px-8 pb-6"
         >
-          <Outlet />
+          {embedded ? (
+            <div className="-mx-5 sm:-mx-6 lg:-mx-8 -mb-6 h-full flex flex-col bg-white dark:bg-ink-800">
+              <div className="flex items-center justify-between px-5 sm:px-6 py-3 border-b border-ink-200 dark:border-ink-700 shrink-0">
+                <h2 className="text-lg font-semibold text-ink-900 dark:text-white">
+                  {embedded.title}
+                </h2>
+                <button
+                  onClick={closeEmbedded}
+                  className="p-1 rounded-lg hover:bg-ink-100 dark:hover:bg-ink-700 text-ink-500 hover:text-ink-900 dark:hover:text-white transition-colors"
+                  aria-label="Close"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              <iframe
+                src={embedded.src}
+                title={embedded.title}
+                className="block w-full flex-1 min-h-0 border-0 bg-white"
+              />
+            </div>
+          ) : (
+            <Outlet />
+          )}
         </motion.main>
       </div>
 
       {/* AiChatWidget hidden until ANTHROPIC_API_KEY is active */}
       {/* <AiChatWidget /> */}
 
-      {/* Campus Statistics Modal */}
-      <AnimatePresence>
-        {campusStatisticsOpen && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-ink-900/50 backdrop-blur-sm flex items-center justify-center p-4"
-            onClick={() => setCampusStatisticsOpen(false)}
-          >
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              className="w-full h-full max-w-7xl bg-white dark:bg-ink-800 rounded-lg shadow-2xl flex flex-col"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {/* Modal header */}
-              <div className="flex items-center justify-between p-4 border-b border-ink-200 dark:border-ink-700">
-                <h2 className="text-lg font-semibold text-ink-900 dark:text-white">
-                  Campus Statistics
-                </h2>
-                <button
-                  onClick={() => setCampusStatisticsOpen(false)}
-                  className="p-1 rounded-lg hover:bg-ink-100 dark:hover:bg-ink-700 text-ink-500 hover:text-ink-900 dark:hover:text-white transition-colors"
-                  aria-label="Close modal"
-                >
-                  <X className="h-5 w-5" />
-                </button>
-              </div>
-
-              {/* Modal body with iframe */}
-              <div className="flex-1 overflow-hidden">
-                <iframe
-                  src="https://cur.ac.rw/umis/documents/registrar_report/campus_statistics.php"
-                  className="w-full h-full border-0"
-                  title="Campus Statistics"
-                />
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-      </div>
+            </div>
     </div>
   );
 }
@@ -1705,6 +1793,7 @@ type NavNodeItemProps = {
   activeUrl: string | null;
   onToggle: (id: string) => void;
   onCampusStatisticsOpen?: () => void;
+  onSupportReportingOpen?: () => void;
 };
 
 const NavNodeItem = memo(function NavNodeItem({
@@ -1714,6 +1803,7 @@ const NavNodeItem = memo(function NavNodeItem({
   activeUrl,
   onToggle,
   onCampusStatisticsOpen,
+  onSupportReportingOpen,
 }: NavNodeItemProps) {
   // Leaf route
   if (!node.children) {
@@ -1729,12 +1819,26 @@ const NavNodeItem = memo(function NavNodeItem({
         ? "text-ink-500 hover:bg-ink-50 hover:text-ink-900 dark:text-ink-400 dark:hover:bg-ink-700/50 dark:hover:text-white"
         : "nav-link-idle");
 
-    // Handle action-based navigation (e.g., campus-statistics)
+    // Handle action-based navigation (e.g., campus-statistics, support-reporting)
     if (node.action === "campus-statistics") {
       return (
         <button
           type="button"
           onClick={onCampusStatisticsOpen}
+          title={collapsed ? node.label : undefined}
+          className={idleClasses}
+        >
+          <node.icon className="h-[18px] w-[18px] shrink-0" />
+          {!collapsed && <span className="truncate">{node.label}</span>}
+        </button>
+      );
+    }
+
+    if (node.action === "support-reporting") {
+      return (
+        <button
+          type="button"
+          onClick={onSupportReportingOpen}
           title={collapsed ? node.label : undefined}
           className={idleClasses}
         >

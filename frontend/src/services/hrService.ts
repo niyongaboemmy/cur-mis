@@ -54,6 +54,7 @@ export interface HrStats {
 }
 
 export interface HrListParams {
+  staff_category?:  'Academic' | 'Administrative' | 'unclassified'
   page?:            number
   per_page?:        number
   q?:               string
@@ -102,22 +103,83 @@ export interface PayrollEntry {
   other_deductions?: number
   net_salary: number
   notes?: string | null
+  /** Procedure components, returned by the slips endpoint. */
+  arrears?: number
+  responsibility_allowance?: number
+  base_gross?: number
+  maternity_base?: number
+  pension_employee?: number
+  maternity_employee?: number
+  rama_employee?: number
+}
+
+/** Inputs the server needs. Every amount (PAYE, RSSB, RAMA, CBHI, net) is calculated on save. */
+export interface PayrollUpsertInput {
+  emp_id: number
+  period_year: number
+  period_month: number
+  /** Step 1. Defaults to the employee's basic salary when omitted. */
+  basic_salary?: number
+  /** Step 5 role codes, comma-separated, or null for none. Defaults to the employee's role when omitted. */
+  responsibility_role?: string | null
+  /** RAMA, or OTHER for another insurer. Defaults to the employee's setting when omitted. */
+  insurance_type?: "RAMA" | "OTHER"
+  /** RADIANT premium per month (step 18). Defaults to the employee's amount when omitted. */
+  insurance_premium?: number
+  /** Step 6. */
+  arrears?: number
+  /** Step 21 override. Defaults to the sum of active deductions for the month. */
+  other_deductions?: number
+  payroll_status?: 'Pending' | 'Approved' | 'Paid'
+}
+
+export interface PayeBand {
+  upper: number | null
+  rate: number
+}
+
+export interface ResponsibilityRole {
+  code: string
+  label: string
+  amount: number
+}
+
+/** Procedure rules served by GET /api/hr/payroll/rules. */
+export interface PayrollRules {
+  rates: Record<string, number>
+  paye_bands: PayeBand[]
+  responsibility_roles: ResponsibilityRole[]
 }
 
 export interface PayrollRow extends HrEmployee {
   payroll_id?: number | null
   period_year?: number | null
   period_month?: number | null
+  responsibility_role?: string | null
+  insurance_type?: string | null
+  insurance_premium?: number | null
   basic_salary?: number | null
   housing_allowance?: number | null
   transport_allowance?: number | null
   other_allowances?: number | null
+  base_gross?: number | null
+  responsibility_allowance?: number | null
+  arrears?: number | null
   gross_salary?: number | null
   paye?: number | null
   rssb?: number | null
+  pension_employee?: number | null
+  maternity_employee?: number | null
+  rama_employee?: number | null
+  maternity_base?: number | null
   cbhi?: number | null
   other_deductions?: number | null
   net_salary?: number | null
+  employer_pension?: number | null
+  employer_maternity?: number | null
+  employer_rama?: number | null
+  employer_occupational?: number | null
+  gross_cost?: number | null
   notes?: string | null
 }
 
@@ -137,7 +199,7 @@ export interface PayrollListResponse {
 }
 
 export interface PayrollSlipsResponse {
-  employee: HrEmployee
+  employee: HrEmployee & { responsibility_role?: string | null }
   slips: PayrollEntry[]
 }
 
@@ -155,24 +217,65 @@ export interface PayrollListParams extends HrListParams {
 
 /* ── Payroll Config types ───────────────────────────────────────────────── */
 
+/**
+ * Automatic deduction set on Payroll Settings. 'fixed' is an amount in RWF taken from net pay;
+ * 'percent' is a rate (6 = 6%) on gross or net salary. New items are always fixed.
+ */
 export interface CustomDeduction {
-  id:            number
-  label:         string
-  description:   string | null
-  employee_rate: number
-  employer_rate: number
-  is_active:     number
-  sort_order:    number
+  id:              number
+  label:           string
+  description:     string | null
+  category:        'Insurance' | 'Other'
+  amount_type:     'fixed' | 'percent'
+  employee_rate:   number
+  employer_rate:   number
+  employee_amount: number                // RWF, used when amount_type is 'fixed'
+  employer_amount: number                // RWF, used when amount_type is 'fixed'
+  base:            'gross' | 'net'        // gross salary, or net salary before CBHI (percent items only)
+  scope:           'all' | 'individual'   // every employee, or only employee_ids
+  employee_ids:    number[]
+  is_active:       number
+  sort_order:      number
 }
 
+export interface CustomDeductionPayload {
+  label:            string
+  description?:     string
+  category:         'Insurance' | 'Other'
+  amount_type:      'fixed' | 'percent'
+  employee_rate:    number
+  employer_rate:    number
+  employee_amount:  number
+  employer_amount:  number
+  base:             'gross' | 'net'
+  scope:            'all' | 'individual'
+  employee_ids:     number[]
+  is_active?:       number
+}
+
+/** Payroll settings. Rates are percentages (6 = 6%); amounts are RWF. */
 export interface PayrollConfig {
-  rssb_employee_rate:      number
-  rssb_employer_rate:      number
-  maternity_employee_rate: number
-  maternity_employer_rate: number
-  cbhi_employee_rate:      number
-  cbhi_employer_rate:      number
-  custom_deductions?:      CustomDeduction[]
+  // Contribution rates (CUR procedure)
+  rssb_employee_rate:         number   // step 10: pension, employee
+  rssb_employer_rate:         number   // step 12: pension, CUR share
+  occupational_employer_rate: number   // step 11: occupational hazard, CUR only
+  maternity_employee_rate:    number   // step 13
+  maternity_employer_rate:    number   // step 14
+  rama_employee_rate:         number   // step 16
+  rama_employer_rate:         number   // step 17
+  cbhi_employee_rate:         number   // step 19: on net salary
+  cbhi_employer_rate:         number   // employer CBHI share: on gross salary
+  // PAYE bands (step 8): upper limits in RWF, rates in percent
+  paye_band_1_upper:          number
+  paye_band_1_rate:           number
+  paye_band_2_upper:          number
+  paye_band_2_rate:           number
+  paye_band_3_upper:          number
+  paye_band_3_rate:           number
+  paye_band_4_rate:           number
+  // Responsibility allowances (step 5): resp_<role code> = RWF per month
+  [key: `resp_${string}`]:    number
+  custom_deductions?:         CustomDeduction[]
 }
 
 /* ── Per-employee Deduction types ──────────────────────────────────────── */
@@ -304,7 +407,20 @@ export interface ProcessPaymentPayload {
   notes?:          string | null
 }
 
+/** Result of the CUR staff classification. `applied` is 0 for a preview. */
+export interface StaffCategoryResult {
+  applied:   number
+  counts:    { Academic: number; Administrative: number; matched: number; unmatched: number; ambiguous: number; conflicts: number }
+  unmatched: { name: string; category: 'Academic' | 'Administrative' }[]
+  ambiguous: { name: string; category: 'Academic' | 'Administrative'; employee_ids: number[] }[]
+  conflicts: { name: string; employee_id: number }[]
+}
+
 export const hrService = {
+  /** apply=false previews the matches; apply=true saves them. */
+  classifyStaffCategories: (apply: boolean) =>
+    api.post<StaffCategoryResult>('/employees/staff-categories', { apply }),
+
   listEmployees: (
     params: HrListParams = {},
     signal?: AbortSignal,
@@ -343,8 +459,12 @@ export const hrService = {
   payrollMySlips: (params?: { from_year?: number; from_month?: number; to_year?: number; to_month?: number }, signal?: AbortSignal) =>
     api.get<MyPayrollSlipsResponse>('/me/payroll', (params ?? {}) as Record<string, unknown>, signal),
 
-  payrollUpsert: (data: PayrollEntry) =>
+  payrollUpsert: (data: PayrollUpsertInput) =>
     api.post<PayrollEntry>('/hr/payroll', data),
+
+  /** Rates, PAYE bands and responsibility roles used by the payroll procedure. */
+  getPayrollRules: (signal?: AbortSignal) =>
+    api.get<PayrollRules>('/hr/payroll/rules', {}, signal),
 
   payrollDelete: (id: number) =>
     api.delete<void>(`/api/hr/payroll/${id}`),
@@ -427,11 +547,11 @@ export const hrService = {
   listCustomDeductions: (signal?: AbortSignal) =>
     api.get<CustomDeduction[]>('/hr/config/deductions', {}, signal),
 
-  addCustomDeduction: (data: { label: string; description?: string; employee_rate: number; employer_rate: number }) =>
+  addCustomDeduction: (data: CustomDeductionPayload) =>
     api.post<CustomDeduction>('/hr/config/deductions', data),
 
-  updateCustomDeduction: (id: number, data: { label: string; description?: string; employee_rate: number; employer_rate: number; is_active: number }) =>
-    api.put<CustomDeduction>(`/api/hr/config/deductions/${id}`, data),
+  updateCustomDeduction: (id: number, data: CustomDeductionPayload) =>
+    api.put<CustomDeduction>(`/hr/config/deductions/${id}`, data),
 
   deleteCustomDeduction: (id: number) =>
     api.delete<void>(`/api/hr/config/deductions/${id}`),

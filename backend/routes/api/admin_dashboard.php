@@ -12,4 +12,5 @@ use App\Middleware\PermissionMiddleware;
  */
 $router->group('/api/admin', function ($router) {
     $router->get('/dashboard', [AdminDashboardController::class, 'overview']);
+    $router->get('/active-students-by-year', [AdminDashboardController::class, 'activeStudentsByYear']);
 }, [AuthMiddleware::class, new PermissionMiddleware(Permissions::VIEW_DASHBOARD)]);

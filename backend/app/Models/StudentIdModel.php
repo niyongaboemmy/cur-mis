@@ -88,6 +88,14 @@ class StudentIdModel extends BaseModel
             $params[] = $campus;
         }
 
+        // Year of the active card's issue date. Students with no active card
+        // have no issue year, so they drop out of a year-filtered list.
+        $year = (int) ($filters['year'] ?? 0);
+        if ($year > 0) {
+            $where[] = 'YEAR(c.issue_date) = ?';
+            $params[] = $year;
+        }
+
         $optionId = (int) ($filters['option_id'] ?? 0);
         if ($optionId > 0) {
             $where[] = 's.std_option = ?';

@@ -6,6 +6,7 @@ namespace App\Controllers;
 
 use Core\Request;
 use Core\Response;
+use Core\Database;
 use App\Models\RoomModel;
 use App\Models\DepartmentModel;
 use App\Models\OptionModel;
@@ -21,6 +22,7 @@ use App\Models\DegreeModel;
 use App\Models\CampusModel;
 use App\Helpers\ValidationHelper;
 use App\Helpers\InstructorDirectory;
+use App\Services\AcademicScopeService;
 
 /**
  * Handles CRUD for general academic entities.
@@ -46,6 +48,96 @@ class AcademicsManagementController extends BaseController
             'degrees'          => new DegreeModel(),
             'campuses'         => new CampusModel(),
         ];
+    }
+
+    /**
+     * Dean / HOD scope for the academic structure. Returns [sql, bindings] for
+     * the list query, or null when the entity is not scoped (superadmin, and
+     * shared reference lists such as levels and campuses).
+     *
+     * @return array{0:string,1:array<int,int|string>}|null
+     */
+    private function scopeWhere(Request $request, string $entity): ?array
+    {
+        $scope = AcademicScopeService::forUser((array)($request->param('_auth_user') ?? []));
+        if ($scope === null) {
+            return null;
+        }
+        return match ($entity) {
+            'departments' => AcademicScopeService::departmentCondition($scope, '`dep_id`'),
+            'options'     => AcademicScopeService::departmentCondition($scope, '`department_id`'),
+            'faculties'   => ($facIds = $this->facultyIdsFor($scope)) === []
+                                ? ['1=0', []]
+                                : ['`fac_id` IN (' . implode(',', array_fill(0, count($facIds), '?')) . ')', $facIds],
+            default       => null,
+        };
+    }
+
+    /** Faculties a scoped user may see: their faculties plus the faculty of each of their departments. */
+    private function facultyIdsFor(array $scope): array
+    {
+        $ids = array_map('intval', $scope['faculty_ids']);
+        if ($scope['department_ids'] !== []) {
+            $ph   = implode(',', array_fill(0, count($scope['department_ids']), '?'));
+            $rows = Database::getInstance()->fetchAll(
+                "SELECT DISTINCT fac_id FROM departements WHERE dep_id IN ({$ph})",
+                array_values($scope['department_ids'])
+            );
+            foreach ($rows as $r) {
+                if ($r['fac_id'] !== null) {
+                    $ids[] = (int)$r['fac_id'];
+                }
+            }
+        }
+        return array_values(array_unique($ids));
+    }
+
+    /**
+     * Single-record guard: a scoped user may read or change a faculty,
+     * department, programme or module only when it belongs to their scope.
+     * $data holds the request body for create / update.
+     */
+    private function guardScope(Request $request, Response $response, string $entity, ?int $id, array $data = []): void
+    {
+        $scope = AcademicScopeService::forUser((array)($request->param('_auth_user') ?? []));
+        if ($scope === null || !in_array($entity, ['faculties', 'departments', 'options', 'modules'], true)) {
+            return;
+        }
+
+        if ($id !== null) {
+            $row = $this->models[$entity]->find($id);
+            if (!$row || !$this->rowInScope($scope, $entity, $row)) {
+                $this->error($response, 'Item not found.', 404);
+            }
+        }
+        // A create must name an in-scope unit; an update may omit keys it does not change.
+        if (!$this->rowInScope($scope, $entity, $data, $id !== null)) {
+            $this->error($response, 'You can only manage records in your own faculty or department.', 403);
+        }
+    }
+
+    /** @param array<string,mixed> $row */
+    private function rowInScope(array $scope, string $entity, array $row, bool $partial = false): bool
+    {
+        return match ($entity) {
+            'departments' => $this->inScopeOrAbsent($scope, $row, 'dep_id', $partial, fn ($v) => AcademicScopeService::allowsDepartment($scope, $v)),
+            'options'     => $this->inScopeOrAbsent($scope, $row, 'department_id', $partial, fn ($v) => AcademicScopeService::allowsDepartment($scope, $v)),
+            'modules'     => $this->inScopeOrAbsent($scope, $row, 'department', $partial, fn ($v) => AcademicScopeService::allowsDepartment($scope, $v)),
+            'faculties'   => $this->inScopeOrAbsent($scope, $row, 'fac_id', $partial, fn ($v) => in_array((int)$v, $this->facultyIdsFor($scope), true)),
+            default       => false,
+        };
+    }
+
+    /**
+     * On a partial write (update) the key may be absent, meaning "unchanged"; a
+     * present key must be in scope. Reads always need the key to be in scope.
+     */
+    private function inScopeOrAbsent(array $scope, array $row, string $key, bool $partial, callable $check): bool
+    {
+        if ($partial && !array_key_exists($key, $row)) {
+            return true;
+        }
+        return $check($row[$key] ?? null);
     }
 
     /**
@@ -92,9 +184,24 @@ class AcademicsManagementController extends BaseController
         if ($entity === 'modules') {
             /** @var ModuleModel $moduleModel */
             $moduleModel = $this->models['modules'];
+
+            // Dean / HOD: only modules in their faculty or department.
+            $scope        = AcademicScopeService::forUser((array)($request->param('_auth_user') ?? []));
+            $department   = $request->query('department') ?: null;
+            $departments  = null;
+            if ($scope !== null) {
+                $allowed     = $scope['department_ids'] ?: [-1];
+                $department  = null;
+                $departments = $allowed;
+                if ($request->query('department') && AcademicScopeService::allowsDepartment($scope, $request->query('department'))) {
+                    $departments = [(int)$request->query('department')];
+                }
+            }
+
             $paginated = $moduleModel->listWithPrereqs($page, $perPage, [
-                'program'    => $request->query('program')    ?: null,
-                'department' => $request->query('department') ?: null,
+                'program'     => $request->query('program')    ?: null,
+                'department'  => $department,
+                'departments' => $departments,
                 'level'      => $request->query('level')      ?: null,
                 'status'     => $request->query('status')     ?: null,
                 'q'          => $request->query('q')          ?: null,
@@ -137,6 +244,13 @@ class AcademicsManagementController extends BaseController
                 }
                 $whereClauses[] = '(' . implode(' OR ', $likes) . ')';
             }
+        }
+
+        // Dean / HOD: faculties, departments and programmes limited to their scope.
+        $scopeWhere = $this->scopeWhere($request, $entity);
+        if ($scopeWhere !== null) {
+            $whereClauses[] = $scopeWhere[0];
+            $bindings       = array_merge($bindings, $scopeWhere[1]);
         }
 
         $where = implode(' AND ', $whereClauses);
@@ -244,6 +358,7 @@ class AcademicsManagementController extends BaseController
         if (!isset($this->models[$entity])) {
             $this->error($response, 'Entity not found.', 404);
         }
+        $this->guardScope($request, $response, $entity, $id);
 
         // Modules carry both prerequisites and the programmes they belong
         // to, so callers (the edit form, in particular) can render their
@@ -253,6 +368,10 @@ class AcademicsManagementController extends BaseController
             $moduleModel = $this->models['modules'];
             $item = $moduleModel->findWithPrereqs($id);
             if (!$item) {
+                $this->error($response, 'Item not found.', 404);
+            }
+            $scope = AcademicScopeService::forUser((array)($request->param('_auth_user') ?? []));
+            if (!AcademicScopeService::allowsDepartment($scope, $item['department'] ?? null)) {
                 $this->error($response, 'Item not found.', 404);
             }
             $this->success($response, $item, 'Module details fetched.');
@@ -274,6 +393,7 @@ class AcademicsManagementController extends BaseController
         if (!isset($this->models[$entity])) {
             $this->error($response, 'Entity not found.', 404);
         }
+        $this->guardScope($request, $response, $entity, null, $data);
 
         // For modules, `program_ids` and `level_ids` are meta — pull them
         // out before model write.
@@ -363,6 +483,7 @@ class AcademicsManagementController extends BaseController
         if (!isset($this->models[$entity])) {
             $this->error($response, 'Entity not found.', 404);
         }
+        $this->guardScope($request, $response, $entity, $id, $data);
 
         if (!$this->models[$entity]->find($id)) {
             $this->error($response, 'Item not found.', 404);
@@ -446,6 +567,7 @@ class AcademicsManagementController extends BaseController
         if (!isset($this->models[$entity])) {
             $this->error($response, 'Entity not found.', 404);
         }
+        $this->guardScope($request, $response, $entity, $id);
 
         $this->models[$entity]->delete($id);
         $this->success($response, null, ucfirst($entity) . ' deleted.');
@@ -1124,7 +1246,12 @@ class AcademicsManagementController extends BaseController
                     $linksCreated++;
                 }
             } catch (\Throwable $e) {
-                $failed[] = ['index' => $idx, 'error' => $e->getMessage()];
+                $failed[] = [
+                    'index'       => $idx,
+                    'module_code' => $code,
+                    'error'       => $this->friendlyImportError($e),
+                    'detail'      => $e->getMessage(),
+                ];
             }
         }
 
@@ -1136,57 +1263,134 @@ class AcademicsManagementController extends BaseController
     }
 
     /**
-     * GET /api/academics-management/schedules?program_id=:id&mode=:mode
+     * Turns a database exception from one import row into a sentence an
+     * administrator can act on. The raw SQL text stays in the row's `detail`
+     * field for support; it is never the main message.
+     */
+    private function friendlyImportError(\Throwable $e): string
+    {
+        $code = $e instanceof \PDOException ? (int)($e->errorInfo[1] ?? 0) : 0;
+
+        return match ($code) {
+            1452 => 'This module could not be linked to the programme because a related record is missing. '
+                  . 'The module catalogue is out of step with the database; ask the system administrator to check the module foreign keys.',
+            1062 => 'This module is already linked to the programme.',
+            1406 => 'A value is too long for its field (for example the module name or code). Shorten it and try again.',
+            1264 => 'A number is outside the allowed range (for example credits, hours or module order).',
+            1048 => 'A required field is empty.',
+            1366 => 'A value has the wrong type (for example text in a number field).',
+            default => 'The database rejected this row. Check the values and try again, or contact support if it keeps failing.',
+        };
+    }
+
+    /**
+     * GET /api/academics-management/schedules?program_ids=1,2,3&mode=:mode
+     * (legacy: program_id=:id is still accepted)
      *
-     * Returns the modules linked to the program (ordered by their
-     * curricular position) with the start/end dates already saved for the
-     * given mode (Day / Weekend / Holiday). Modules without a saved
-     * offering for that mode come back with `start_date: null` so the UI
-     * can render an empty row ready to be filled in.
+     * Returns the modules linked to the selected programs (one row per module,
+     * ordered by curricular position) with their saved blocks for the given
+     * mode. Each module lists which selected programs link it (`program_ids`).
+     *
+     * A combined block (rows sharing a `shared_block_key`) is returned once:
+     * the lowest-id row among the selected programs stands for it, with
+     * `option_id` = that row's program and `also_program_ids` = every other
+     * program running it (including programs not in the current selection).
      */
     public function getSchedules(Request $request, Response $response): never
     {
-        $programId = (int)($request->query('program_id') ?? 0);
-        if ($programId <= 0) {
-            $this->error($response, 'program_id is required.', 422);
+        $raw = (string)($request->query('program_ids') ?? $request->query('program_id') ?? '');
+        $programIds = [];
+        foreach (explode(',', $raw) as $tok) {
+            $n = (int)trim($tok);
+            if ($n > 0 && !in_array($n, $programIds, true)) $programIds[] = $n;
+        }
+        if ($programIds === []) {
+            $this->error($response, 'program_ids is required.', 422);
         }
         $mode = trim((string)($request->query('mode') ?? ''));
         $modeKey = $mode === '' ? null : $mode;
+        $placeholders = implode(',', array_fill(0, count($programIds), '?'));
 
         /** @var ModuleModel $moduleModel */
         $moduleModel = $this->models['modules'];
+        $db = $moduleModel->db();
 
-        // Modules in the program, ordered by their curricular position.
-        $modules = $moduleModel->db()->fetchAll(
-            "SELECT mp.module_id, mp.module_order,
+        // Modules linked to the selected programs. A module shared by several
+        // selected programs is folded into one row in PHP below.
+        $moduleRows = $db->fetchAll(
+            "SELECT mp.module_id, mp.option_id, mp.module_order,
                     m.module_code, m.module_name, m.module_credits, m.level
              FROM `module_programs` mp
              JOIN `modules` m ON m.module_id = mp.module_id
-             WHERE mp.option_id = ?
+             WHERE mp.option_id IN ({$placeholders})
              ORDER BY mp.module_order ASC, m.module_code ASC",
-            [$programId],
+            $programIds,
         );
+        $modules = [];
+        foreach ($moduleRows as $r) {
+            $mid = (int)$r['module_id'];
+            if (!isset($modules[$mid])) {
+                $modules[$mid] = [
+                    'module_id'      => $mid,
+                    'module_order'   => $r['module_order'] !== null ? (int)$r['module_order'] : null,
+                    'module_code'    => (string)$r['module_code'],
+                    'module_name'    => (string)$r['module_name'],
+                    'module_credits' => $r['module_credits'] !== null ? (int)$r['module_credits'] : null,
+                    'level'          => $r['level'] !== null ? (int)$r['level'] : null,
+                    'program_ids'    => [],
+                ];
+            }
+            $modules[$mid]['program_ids'][] = (int)$r['option_id'];
+            // Keep the earliest curricular position across the selected programs.
+            if ($r['module_order'] !== null && ($modules[$mid]['module_order'] === null || (int)$r['module_order'] < $modules[$mid]['module_order'])) {
+                $modules[$mid]['module_order'] = (int)$r['module_order'];
+            }
+        }
 
-        // All saved offerings (blocks) for this (program, mode), grouped by
-        // module_id. Multiple blocks per module are normal (e.g. several
-        // weeks of teaching + a final exam).
-        $offeringRows = $moduleModel->db()->fetchAll(
-            "SELECT mo.id, mo.module_id, mo.start_date, mo.end_date, mo.semesters,
+        // Offerings for the selected programs in this mode. Lowest id first so
+        // the representative row of a combined block is deterministic.
+        $offeringRows = $db->fetchAll(
+            "SELECT mo.id, mo.option_id, mo.module_id, mo.start_date, mo.end_date, mo.semesters,
                     mo.academic_year, mo.mode_order,
                     mo.day_of_week, mo.day_pattern, mo.start_time, mo.end_time,
                     mo.instructor_id, mo.activity, mo.instructor_name, mo.year_of_study,
-                    mo.campus_id,
+                    mo.campus_id, mo.shared_block_key,
                     e.full_name AS instructor_full_name
              FROM `module_offerings` mo
              LEFT JOIN `hr_employees` e ON e.id = mo.instructor_id
-             WHERE mo.option_id = ? AND mo.`mode` <=> ?
-             ORDER BY mo.module_id ASC, mo.start_date ASC, mo.start_time ASC",
-            [$programId, $modeKey],
+             WHERE mo.option_id IN ({$placeholders}) AND mo.`mode` <=> ?
+             ORDER BY mo.module_id ASC, mo.start_date ASC, mo.start_time ASC, mo.id ASC",
+            [...$programIds, $modeKey],
         );
+
+        // Every program running each combined block, including programs outside
+        // the current selection. Keyed by shared_block_key → [option_id, …].
+        $sharedKeys = array_values(array_unique(array_filter(
+            array_map(static fn ($o) => $o['shared_block_key'] ?? null, $offeringRows),
+        )));
+        $sharedOptions = [];
+        if ($sharedKeys !== []) {
+            $keyPh = implode(',', array_fill(0, count($sharedKeys), '?'));
+            foreach ($db->fetchAll(
+                "SELECT shared_block_key, option_id FROM `module_offerings` WHERE shared_block_key IN ({$keyPh})",
+                $sharedKeys,
+            ) as $s) {
+                $sharedOptions[$s['shared_block_key']][] = (int)$s['option_id'];
+            }
+        }
+
         $blocksByModule = [];
+        $seenKeys = [];
         foreach ($offeringRows as $o) {
             $mid = (int)$o['module_id'];
+            $key = $o['shared_block_key'] ?? null;
+            // A combined block already shown via another of its rows.
+            if ($key !== null) {
+                if (isset($seenKeys[$key])) continue;
+                $seenKeys[$key] = true;
+            }
             $blocksByModule[$mid] ??= [];
+            $ownOption = (int)$o['option_id'];
             // Prefer the multi-day `day_pattern` when present; fall back to
             // the legacy single-day `day_of_week` so rows saved before this
             // feature still surface a value.
@@ -1196,6 +1400,7 @@ class AcademicsManagementController extends BaseController
             }
             $blocksByModule[$mid][] = [
                 'id'              => (int)$o['id'],
+                'option_id'       => $ownOption,
                 'start_date'      => $o['start_date']    ?? null,
                 'end_date'        => $o['end_date']      ?? null,
                 'semesters'       => $o['semesters']     ?? null,
@@ -1209,21 +1414,17 @@ class AcademicsManagementController extends BaseController
                 'activity'        => $o['activity']        ?? null,
                 'year_of_study'   => isset($o['year_of_study']) && $o['year_of_study'] !== null ? (int)$o['year_of_study'] : null,
                 'campus_id'       => isset($o['campus_id']) && $o['campus_id'] !== null ? (int)$o['campus_id'] : null,
+                'also_program_ids' => $key !== null
+                    ? array_values(array_filter(array_unique($sharedOptions[$key] ?? []), static fn (int $p) => $p !== $ownOption))
+                    : [],
             ];
         }
 
         $rows = [];
-        foreach ($modules as $m) {
-            $mid = (int)$m['module_id'];
-            $rows[] = [
-                'module_id'      => $mid,
-                'module_order'   => $m['module_order'] !== null ? (int)$m['module_order'] : null,
-                'module_code'    => (string)$m['module_code'],
-                'module_name'    => (string)$m['module_name'],
-                'module_credits' => $m['module_credits'] !== null ? (int)$m['module_credits'] : null,
-                'level'          => $m['level'] !== null ? (int)$m['level'] : null,
-                'blocks'         => $blocksByModule[$mid] ?? [],
-            ];
+        foreach ($modules as $mid => $m) {
+            $m['program_ids'] = array_values(array_unique($m['program_ids']));
+            $m['blocks']      = $blocksByModule[$mid] ?? [];
+            $rows[] = $m;
         }
 
         $this->success($response, ['rows' => $rows, 'count' => count($rows)], 'Schedule fetched.');
@@ -1255,6 +1456,15 @@ class AcademicsManagementController extends BaseController
         return InstructorDirectory::resolveName($this->models['modules']->db(), $instructorId);
     }
 
+    /** True when the module is curricular for the program (`module_programs` link). */
+    private function moduleLinkedToProgram(int $moduleId, int $programId): bool
+    {
+        return !empty($this->models['modules']->db()->fetchOne(
+            "SELECT 1 FROM `module_programs` WHERE module_id = ? AND option_id = ? LIMIT 1",
+            [$moduleId, $programId],
+        ));
+    }
+
     /**
      * POST /api/academics-management/schedules
      * Body: {
@@ -1269,6 +1479,12 @@ class AcademicsManagementController extends BaseController
      * A block with an `id` is updated; without an `id` it's created. A
      * single module can carry many blocks (e.g. several teaching weeks +
      * a final exam) under the same (program, mode).
+     *
+     * `also_program_ids` (optional, per block) lists other programs that
+     * run the same session (combined classes). Each program gets its own
+     * row, all sharing one `shared_block_key`. Edits to a combined block are
+     * copied to every row; removing a program from the list deletes only
+     * that program's row. Each program must already link the module.
      */
     public function saveSchedules(Request $request, Response $response): never
     {
@@ -1302,12 +1518,21 @@ class AcademicsManagementController extends BaseController
         };
 
         // Deletes go first so an admin can swap out blocks in one save.
+        // Deleting a combined block removes every program's copy of it.
         foreach ($deleteIds as $rawId) {
             $id = (int)$rawId;
             if ($id <= 0) continue;
             try {
-                $offModel->delete($id);
-                $deleted++;
+                $row = $offModel->find($id);
+                $key = $row ? ($row['shared_block_key'] ?? null) : null;
+                $ids = $key !== null
+                    ? array_map(static fn ($r) => (int)$r['id'], $offModel->db()->fetchAll(
+                        "SELECT id FROM `module_offerings` WHERE shared_block_key = ?", [$key]))
+                    : [$id];
+                foreach (array_unique($ids) as $delId) {
+                    $offModel->delete($delId);
+                    $deleted++;
+                }
             } catch (\Throwable $e) {
                 $failed[] = ['index' => "delete:{$id}", 'error' => $e->getMessage()];
             }
@@ -1390,16 +1615,87 @@ class AcademicsManagementController extends BaseController
             ];
 
             try {
+                $existing = $blockId > 0 ? $offModel->find($blockId) : false;
+                if ($blockId > 0 && !$existing) {
+                    $failed[] = ['index' => $idx, 'error' => "Block #{$blockId} not found."];
+                    continue;
+                }
+                $targetModuleId = $existing ? (int)$existing['module_id'] : $moduleId;
+                $sharedKey      = $existing['shared_block_key'] ?? null;
+                // The block's own program: the stored row on update, the payload's
+                // option_id (falling back to the request program) on create.
+                $ownOption      = $existing ? (int)$existing['option_id'] : ((int)($s['option_id'] ?? 0) ?: $programId);
+
+                // Combined block: the same session also runs for these programs.
+                // Checked before anything is written so a bad target never leaves
+                // the block half-saved.
+                $sendsAlso = array_key_exists('also_program_ids', $s);
+                $alsoIds   = [];
+                if ($sendsAlso && is_array($s['also_program_ids'])) {
+                    foreach ($s['also_program_ids'] as $pid) {
+                        $pid = (int)$pid;
+                        if ($pid > 0 && $pid !== $ownOption && !in_array($pid, $alsoIds, true)) $alsoIds[] = $pid;
+                    }
+                }
+                $unlinked = array_values(array_filter(
+                    $alsoIds,
+                    fn (int $pid) => !$this->moduleLinkedToProgram($targetModuleId, $pid),
+                ));
+                if ($unlinked !== []) {
+                    $failed[] = ['index' => $idx, 'error' => 'Module is not linked to program #' . implode(', #', $unlinked) . '. Link it there first.'];
+                    continue;
+                }
+
                 if ($blockId > 0) {
-                    $offModel->update($blockId, $payload);
+                    $key = $sharedKey ?? ($alsoIds !== [] ? bin2hex(random_bytes(16)) : null);
+                    $offModel->update($blockId, $payload + ['shared_block_key' => $key]);
                     $updated++;
+
+                    // Keep every copy of a combined block in step with this edit.
+                    $have = [];
+                    if ($key !== null) {
+                        $siblings = $offModel->db()->fetchAll(
+                            "SELECT id, option_id FROM `module_offerings` WHERE shared_block_key = ? AND id <> ?",
+                            [$key, $blockId],
+                        );
+                        foreach ($siblings as $sib) {
+                            $sid = (int)$sib['id'];
+                            $pid = (int)$sib['option_id'];
+                            if ($sendsAlso && !in_array($pid, $alsoIds, true)) {
+                                $offModel->delete($sid);
+                                $deleted++;
+                                continue;
+                            }
+                            $offModel->update($sid, $payload);
+                            $updated++;
+                            $have[] = $pid;
+                        }
+                    }
+                    foreach (array_values(array_diff($alsoIds, $have)) as $pid) {
+                        $offModel->create(array_merge($payload, [
+                            'module_id'        => $targetModuleId,
+                            'option_id'        => $pid,
+                            'mode'             => $modeKey,
+                            'shared_block_key' => $key,
+                        ]));
+                        $created++;
+                        $have[] = $pid;
+                    }
+                    // Last remaining copy is no longer shared — unlink it.
+                    if ($key !== null && $have === []) {
+                        $offModel->update($blockId, ['shared_block_key' => null]);
+                    }
                 } else {
-                    $offModel->create(array_merge($payload, [
-                        'module_id' => $moduleId,
-                        'option_id' => $programId,
-                        'mode'      => $modeKey,
-                    ]));
-                    $created++;
+                    $key = $alsoIds !== [] ? bin2hex(random_bytes(16)) : null;
+                    foreach (array_merge([$ownOption], $alsoIds) as $pid) {
+                        $offModel->create(array_merge($payload, [
+                            'module_id'        => $moduleId,
+                            'option_id'        => $pid,
+                            'mode'             => $modeKey,
+                            'shared_block_key' => $key,
+                        ]));
+                        $created++;
+                    }
                 }
             } catch (\Throwable $e) {
                 $failed[] = ['index' => $idx, 'error' => $e->getMessage()];
@@ -1439,6 +1735,16 @@ class AcademicsManagementController extends BaseController
      */
     public function examScheduledModules(Request $request, Response $response): never
     {
+        // Dean / HOD: only modules in their faculty or department.
+        $authUser = (array)($request->param('_auth_user') ?? []);
+        $scopeSql = AcademicScopeService::moduleClause($authUser, 'mo.module_id');
+        // A lecturer sees only the modules assigned to them, not every timetabled module.
+        if (AcademicScopeService::isTeachingOnly($authUser)) {
+            // This term's assignments only: an assignment from an earlier term is not a current module.
+            $termId   = (int) (\App\Helpers\AcademicYearTerm::current()[1] ?? 0);
+            $mine     = \App\Helpers\LecturerScope::moduleIds($this->models['module_offerings']->db(), (int)($authUser['id'] ?? 0), $termId > 0 ? $termId : null);
+            $scopeSql = $mine === [] ? ' AND 1 = 0' : ' AND mo.module_id IN (' . implode(',', array_map('intval', $mine)) . ')';
+        }
         $rows = $this->models['module_offerings']->db()->fetchAll(
             "SELECT
                 mo.module_id,
@@ -1462,7 +1768,7 @@ class AcademicsManagementController extends BaseController
              JOIN `modules`      m  ON m.module_id = mo.module_id
              LEFT JOIN `options` o  ON o.id        = mo.option_id
              LEFT JOIN `campuses`    c ON c.id     = mo.campus_id
-             WHERE mo.module_id IS NOT NULL
+             WHERE mo.module_id IS NOT NULL{$scopeSql}
              GROUP BY mo.module_id, mo.option_id, mo.mode, mo.academic_year,
                       mo.year_of_study, mo.semesters, mo.campus_id,
                       m.module_code, m.module_name, m.module_credits, m.level,
@@ -1555,6 +1861,8 @@ class AcademicsManagementController extends BaseController
                 $args[]  = $like;
             }
             $whereSql = $where ? ('AND ' . implode(' AND ', $where)) : '';
+            // Dean / HOD: only exams for modules in their faculty or department.
+            $whereSql .= AcademicScopeService::moduleClause((array)($request->param('_auth_user') ?? []), 'm.module_id');
 
             // Subquery dedupes module_offerings into one row per module
             // inside the program — admins only need one entry per module
@@ -1632,6 +1940,9 @@ class AcademicsManagementController extends BaseController
                 $args[]  = $like;
             }
             $whereSql = $where ? ('WHERE ' . implode(' AND ', $where)) : '';
+            // Dean / HOD: only exam schedules for modules in their faculty or department.
+            $whereSql  = ($whereSql === '' ? ' WHERE 1 = 1' : $whereSql)
+                . AcademicScopeService::moduleClause((array)($request->param('_auth_user') ?? []), 'm.module_id');
 
             $rows = $this->models['exam_schedules']->db()->fetchAll(
                 "SELECT

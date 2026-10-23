@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useSearchParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { GraduationCap, CheckCircle2, Plus } from 'lucide-react'
 import Modal from '@/components/ui/Modal'
@@ -28,7 +29,15 @@ export default function GraduandManagementPage() {
                 || authUser?.role === 'superadmin'
 
   const qc = useQueryClient()
+  // The sidebar's "Graduation List" link carries ?tab=list. Read it on mount and
+  // again when it changes, so clicking the link while this page is already open
+  // still switches tabs.
+  const [searchParams] = useSearchParams()
   const [activeTab, setActiveTab] = useState<TabKey>('audit')
+  useEffect(() => {
+    const t = searchParams.get('tab')
+    if (t === 'audit' || t === 'eligibility' || t === 'list') setActiveTab(t)
+  }, [searchParams])
   const [page, setPage]     = useState(1)
   // Page size is shared by both tabs. Changing it resets to page 1 — staying on
   // page 3 after switching 20 → 500 would land past the end of the result set.

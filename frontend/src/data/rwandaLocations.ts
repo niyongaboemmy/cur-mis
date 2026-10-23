@@ -122,3 +122,27 @@ export function provinceOfDistrict(district: string | null | undefined): Provinc
   }
   return null
 }
+
+/**
+ * Shown in place of a district that is missing or not one of the 30 official
+ * districts. Display only: nothing is written until someone picks the real
+ * district from the inline editor.
+ */
+export const PLACEHOLDER_DISTRICTS = ['Nyanza', 'Gisagara', 'Nyamagabe'] as const
+
+const CANONICAL_DISTRICT = new Map(ALL_DISTRICTS.map((d) => [d.toLowerCase(), d]))
+
+/**
+ * The district to show for a student. A known district is returned as its
+ * canonical spelling. Anything else gets a placeholder picked by student id,
+ * so the same student shows the same placeholder on every page and render.
+ */
+export function displayDistrict(
+  stored: string | null | undefined,
+  studentId: number,
+): { name: string; isPlaceholder: boolean } {
+  const known = CANONICAL_DISTRICT.get((stored ?? '').trim().toLowerCase())
+  if (known) return { name: known, isPlaceholder: false }
+  const index = Math.abs(Math.trunc(studentId)) % PLACEHOLDER_DISTRICTS.length
+  return { name: PLACEHOLDER_DISTRICTS[index], isPlaceholder: true }
+}

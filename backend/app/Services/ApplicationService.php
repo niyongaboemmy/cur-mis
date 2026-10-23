@@ -441,6 +441,18 @@ class ApplicationService
             );
         }
 
+        // The Registration fee is mandatory: no registration number without it,
+        // even when Finance has not billed it. The 5,000 RWF application fee does
+        // not count towards it.
+        $registrationBill = (new \App\Models\ApplicationInvoiceModel())->findByFeeType($applicationId, 'REGISTRATION');
+        if (!$registrationBill
+            || (float)$registrationBill['amount_paid'] + 0.009 < (float)$registrationBill['amount_due']
+        ) {
+            throw new \RuntimeException(
+                'The Registration fee must be paid before a registration number can be issued.'
+            );
+        }
+
         // Detect returning students. A "returning" applicant already has a
         // `student` row (typically because they completed an undergraduate
         // programme here and are now enrolling in a Masters/PGDE). We DO NOT
@@ -539,6 +551,19 @@ class ApplicationService
             }
         }
 
+        // Fetch applicant's profile photo to carry forward to the student record
+        $applicantPhoto = null;
+        if ($applicationId > 0) {
+            $photoRow = $this->db->fetchOne(
+                "SELECT COALESCE(ap.profile_photo_id, u.photo) AS photo_id
+                 FROM `applicant_profiles` ap
+                 LEFT JOIN `users` u ON u.id = ap.user_id
+                 WHERE ap.application_id = ? LIMIT 1",
+                [$applicationId]
+            );
+            $applicantPhoto = $photoRow['photo_id'] ?? null;
+        }
+
         // Map application → student table columns. `std_option` carries the
         // option/program id selected on the application; the curriculum
         // endpoint joins on it to pull the program's modules.
@@ -573,6 +598,7 @@ class ApplicationService
             'intake'            => $offer['intake'] ?? '',
             'acc_year'          => $accYearLabel,
             'index_number'      => $applicantNid ?: null,
+            'photo'             => $applicantPhoto,
         ];
 
         $studentId = (int)$this->studentModel->create($studentData);

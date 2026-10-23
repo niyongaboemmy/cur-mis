@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Controllers;
 
+use App\Services\AcademicScopeService;
 use Core\Request;
 use Core\Response;
 use Core\Database;
@@ -88,6 +89,12 @@ class TimetableController extends BaseController
             $bindings[] = $levelId;
         }
 
+        // Dean / HOD: only timetable rows for modules in their departments.
+        $deptIds = AcademicScopeService::scopeDepartmentIds((array)($request->param("_auth_user") ?? []));
+        if ($deptIds !== null) {
+            $where[] = $deptIds === [] ? "1 = 0" : "m.department IN (" . implode(",", array_fill(0, count($deptIds), "?")) . ")";
+            $bindings = array_merge($bindings, $deptIds);
+        }
         $whereSql = $where ? ('WHERE ' . implode(' AND ', $where)) : '';
 
         $rows = $this->db->fetchAll(

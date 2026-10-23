@@ -3,6 +3,7 @@ import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { api } from '@/services/api'
+import { disableDevicePush } from '@/services/devicePushService'
 import { useAuthStore } from '@/store/authStore'
 import { useSystemStore } from '@/store/systemStore'
 import type { 
@@ -193,7 +194,11 @@ export function useLogout() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: () => api.post('/auth/logout'),
+    mutationFn: async () => {
+      // Stop this browser receiving the signed-out user's alerts (shared computers).
+      await disableDevicePush().catch(() => {})
+      return api.post('/auth/logout')
+    },
     onSettled: () => {
       logout()
       useSystemStore.getState().clear()

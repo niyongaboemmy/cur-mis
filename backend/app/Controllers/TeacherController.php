@@ -1404,12 +1404,10 @@ class TeacherController extends BaseController
         $termId = $this->resolveTermId($request);
         $ids    = LecturerScope::moduleIds($this->db, $uid, $termId);
 
-        // Scheduled-only, so the "My courses" tile agrees with /teacher/courses,
-        // which hides assignments that carry no timetable.
-        $scheduledIds = array_keys($this->schedulesForModules($ids, $termId));
-
+        // The "My courses" tile counts assigned modules, the same list the courses page and
+        // the marks page start from. A module without a timetable still counts as assigned.
         $stats = [
-            'courses'            => count($scheduledIds),
+            'courses'            => count($ids),
             'students'           => 0,
             'sessions_held'      => 0,
             'attendance_rate'    => null,

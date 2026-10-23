@@ -238,7 +238,7 @@ class TeacherDemoSeeder implements SeederInterface
                     $totalExams++;
                 }
 
-                $log[] = "  {$module['module_code']} — {$module['module_name']}: assigned, roster + timetable + exam seeded.";
+                $log[] = "  {$module['module_code']} — {$module['module_name']}: assigned, enrollment + timetable + exam seeded.";
             }
         }
 

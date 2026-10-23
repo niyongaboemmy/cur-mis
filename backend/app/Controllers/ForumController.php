@@ -15,6 +15,7 @@ use App\Helpers\ValidationHelper;
 use App\Helpers\FileServerClient;
 use App\Services\SystemLogService;
 use App\Services\AuthService;
+use App\Services\NotificationService;
 
 /**
  * Discussion forums — categories → threads → posts, with audience-scoped
@@ -280,6 +281,10 @@ class ForumController extends BaseController
             'created_by' => (int) $actor['id'],
         ]);
         $this->threads->touch($threadId);
+        $this->notifyParticipants(
+            $threadId, 'forum_thread', $threadId, 'Reply: ' . (string) ($thread['title'] ?? 'thread'),
+            '/forums/threads/' . $threadId, trim((string) $body['body']), $actor
+        );
 
         SystemLogService::log('CREATE', 'FORUMS', "User {$actor['id']} replied in thread {$threadId}.", $postId, 'forum_post', null, $actor);
 
@@ -454,6 +459,10 @@ class ForumController extends BaseController
             'attachment_mime' => $attachMime,
         ]);
         $this->threads->touch($threadId);
+        $this->notifyParticipants(
+            $threadId, 'forum_room', $categoryId, (string) $cat['name'], '/forums',
+            $text !== '' ? $text : 'shared a file', $actor
+        );
 
         $cols = self::MSG_COLS;
         $msg  = $this->db->fetchOne(
@@ -465,6 +474,48 @@ class ForumController extends BaseController
             [$postId]
         );
         $this->success($response, $msg, 'Message sent.', 201);
+    }
+
+    /**
+     * Tell the people taking part in a thread or chat room about new activity.
+     * Participants are whoever started it or has posted in it, so a busy public
+     * room does not ping everyone who can see it.
+     */
+    private function notifyParticipants(
+        int $threadId,
+        string $entityType,
+        int $entityId,
+        string $title,
+        string $link,
+        string $text,
+        array $actor
+    ): void {
+        try {
+            $rows = $this->db->fetchAll(
+                "SELECT created_by AS uid FROM forum_posts WHERE thread_id = ? AND created_by IS NOT NULL
+                 UNION
+                 SELECT created_by AS uid FROM forum_threads WHERE id = ? AND created_by IS NOT NULL",
+                [$threadId, $threadId]
+            );
+            $participants = array_map(static fn(array $r): int => (int) $r['uid'], $rows);
+
+            $author  = $this->db->fetchOne('SELECT full_name FROM users WHERE id = ?', [(int) $actor['id']]);
+            $excerpt = mb_substr(trim(strip_tags($text)), 0, 140);
+
+            NotificationService::pushDigest(
+                $participants,
+                'forum',
+                $entityType,
+                $entityId,
+                $title,
+                ($author['full_name'] ?? 'Someone') . ': ' . $excerpt,
+                $link,
+                'info',
+                [(int) $actor['id']]
+            );
+        } catch (\Throwable $e) {
+            error_log('[Forums] notifying participants failed: ' . $e->getMessage());
+        }
     }
 
     /**

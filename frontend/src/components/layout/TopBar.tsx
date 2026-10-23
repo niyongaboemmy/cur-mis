@@ -11,6 +11,7 @@ import NotificationBell from "@/components/layout/NotificationBell";
 import MessageNotificationBell from "@/components/layout/MessageNotificationBell";
 import HelpLauncher from "@/components/help/HelpLauncher";
 import UserDropdown from "@/components/layout/UserDropdown";
+import InstallAppButton from "@/components/layout/InstallAppButton";
 
 /** Shared ghost icon-button styling so every control in the bar matches. */
 const iconBtn =
@@ -169,6 +170,7 @@ export default function TopBar({
 
           <div className="mx-1 hidden sm:block h-6 w-px bg-ink-200/70 dark:bg-ink-700" />
 
+          <InstallAppButton />
           <NotificationBell />
           <MessageNotificationBell />
           <div className="hidden sm:block">

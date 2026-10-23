@@ -14,6 +14,12 @@ export const DOCUMENT_TYPES: DocumentTypeDef[] = [
     group: 'Letters & attestations',
   },
   {
+    slug: 'rejection_letter',
+    label: 'Rejection Letter',
+    fileName: 'Rejection_Letter.pdf',
+    group: 'Letters & attestations',
+  },
+  {
     slug: 'enrollment_letter',
     label: 'Enrollment Letter',
     fileName: 'Enrollment_Letter.pdf',
@@ -116,7 +122,7 @@ export const DOCUMENT_TYPES: DocumentTypeDef[] = [
 
   // Registration
   {
-    slug: 'generic_document',
+    slug: 'registration_form',
     label: 'Registration Form',
     fileName: 'Registration_Form.pdf',
     group: 'Registration',

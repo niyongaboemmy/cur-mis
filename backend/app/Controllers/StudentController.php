@@ -16,6 +16,7 @@ use App\Models\DepartmentModel;
 use App\Models\OptionModel;
 use App\Helpers\ValidationHelper;
 use App\Helpers\FileServerClient;
+use App\Services\AcademicScopeService;
 use App\Services\SystemLogService;
 use App\Services\StudentDocumentComplianceService;
 
@@ -32,6 +33,81 @@ class StudentController extends BaseController
         $this->docModel     = new ApplicationDocumentModel();
         $this->visaModel    = new StudentVisaRecordModel();
         $this->statusModel  = new StudentStatusChangeModel();
+    }
+
+    /**
+     * Normalize country names using fuzzy pattern matching.
+     * Maps spelling variants (Burundi, Burundaise, Burundese) → "Burundi"
+     */
+    private static function normalizeCountryName(string $country): string
+    {
+        $v = strtolower(trim($country));
+
+        // East Africa
+        if (strpos($v, 'rwa') === 0) return 'Rwanda';
+        if (strpos($v, 'uga') === 0 || $v === 'ug') return 'Uganda';
+        if (strpos($v, 'ken') === 0) return 'Kenya';
+        if (strpos($v, 'tanz') === 0 || strpos($v, 'tanzania') !== false) return 'Tanzania';
+        if (strpos($v, 'bur') === 0) return 'Burundi';
+        if (strpos($v, 'south sudan') !== false || strpos($v, 's. sudan') !== false) return 'South Sudan';
+        if (strpos($v, 'congo') !== false || strpos($v, 'drc') !== false || $v === 'cd') return 'Democratic Republic of the Congo';
+        if (strpos($v, 'zamb') !== false) return 'Zambia';
+        if (strpos($v, 'zimbabw') !== false) return 'Zimbabwe';
+
+        // West Africa
+        if (strpos($v, 'liber') !== false) return 'Liberia';
+        if (strpos($v, 'sierra leone') !== false) return 'Sierra Leone';
+        if (strpos($v, 'ghana') !== false || $v === 'gh') return 'Ghana';
+        if (strpos($v, 'niger') !== false && strpos($v, 'nigeria') === false) return 'Niger';
+        if (strpos($v, 'nigeria') !== false) return 'Nigeria';
+        if (strpos($v, 'senegal') !== false) return 'Senegal';
+
+        // Asia-Pacific
+        if (strpos($v, 'india') !== false || $v === 'in') return 'India';
+        if (strpos($v, 'chin') !== false || $v === 'cn') return 'China';
+        if (strpos($v, 'japan') !== false || $v === 'jp') return 'Japan';
+        if (strpos($v, 'singapor') !== false) return 'Singapore';
+        if (strpos($v, 'malays') !== false) return 'Malaysia';
+        if (strpos($v, 'thai') !== false) return 'Thailand';
+        if (strpos($v, 'philip') !== false) return 'Philippines';
+        if (strpos($v, 'indon') !== false) return 'Indonesia';
+        if (strpos($v, 'vietnam') !== false) return 'Vietnam';
+        if (strpos($v, 'banglad') !== false) return 'Bangladesh';
+        if (strpos($v, 'pakist') !== false) return 'Pakistan';
+
+        // Europe
+        if (strpos($v, 'franc') !== false || $v === 'fr') return 'France';
+        if (strpos($v, 'german') !== false || strpos($v, 'germa') !== false || $v === 'de') return 'Germany';
+        if (strpos($v, 'ital') !== false) return 'Italy';
+        if (strpos($v, 'spain') !== false || strpos($v, 'spai') !== false) return 'Spain';
+        if (strpos($v, 'nether') !== false) return 'Netherlands';
+        if (strpos($v, 'belg') !== false) return 'Belgium';
+        if (strpos($v, 'austri') !== false && strpos($v, 'australia') === false) return 'Austria';
+        if (strpos($v, 'poland') !== false || strpos($v, 'polan') !== false) return 'Poland';
+        if (strpos($v, 'portug') !== false) return 'Portugal';
+        if (strpos($v, 'greec') !== false || strpos($v, 'gree') !== false) return 'Greece';
+        if (strpos($v, 'swed') !== false) return 'Sweden';
+        if (strpos($v, 'norwav') !== false || strpos($v, 'norwa') !== false) return 'Norway';
+
+        // Middle East
+        if (strpos($v, 'saudi') !== false) return 'Saudi Arabia';
+        if (strpos($v, 'emira') !== false || $v === 'ae') return 'United Arab Emirates';
+        if (strpos($v, 'qatar') !== false || strpos($v, 'qata') !== false) return 'Qatar';
+        if (strpos($v, 'kuwai') !== false) return 'Kuwait';
+        if (strpos($v, 'oman') !== false) return 'Oman';
+        if (strpos($v, 'jordan') !== false) return 'Jordan';
+        if (strpos($v, 'lebanon') !== false) return 'Lebanon';
+
+        // Americas
+        if (strpos($v, 'united states') !== false || $v === 'us' || $v === 'usa') return 'United States';
+        if (strpos($v, 'canada') !== false) return 'Canada';
+        if (strpos($v, 'mexico') !== false) return 'Mexico';
+        if (strpos($v, 'brazil') !== false) return 'Brazil';
+        if (strpos($v, 'argentin') !== false) return 'Argentina';
+        if (strpos($v, 'chil') !== false) return 'Chile';
+        if (strpos($v, 'colomb') !== false) return 'Colombia';
+
+        return $country;
     }
 
     /**
@@ -215,8 +291,146 @@ class StudentController extends BaseController
 
         $this->applyFilterableClauses($request, $clauses, $bindings, $alias, $except);
 
+        // Dean / HOD: every list, export and facet count is limited to their
+        // faculty or department. Superadmin and unscoped users get no extra clause.
+        $deptCond = AcademicScopeService::departmentCondition(
+            AcademicScopeService::forUser((array)($request->param('_auth_user') ?? [])),
+            $p . 'department'
+        );
+        if ($deptCond !== null) {
+            $clauses[] = $deptCond[0];
+            $bindings  = array_merge($bindings, $deptCond[1]);
+        }
+
         $where = $clauses ? implode(' AND ', $clauses) : '';
         return [$where, $bindings];
+    }
+
+    /**
+     * Columns the student list can sort by in SQL. Keys are the `sort_by`
+     * values the UI sends. `age` sorts by birthdate, so its direction flips.
+     */
+    private const SQL_SORT_COLUMNS = [
+        'id'            => 'id',
+        'fname'         => 'fname',
+        'regnumber'     => 'regnumber',
+        'email'         => 'email',
+        'gender'        => 'gender',
+        'nationality'   => 'nationality',
+        'district'      => 'district',
+        'acc_year'      => 'acc_year',
+        'learning_mode' => 'learning_mode',
+        'age'           => 'birthdate',
+    ];
+
+    /**
+     * Columns computed in PHP (campus name, reg-number years, document
+     * status). They are ordered over the whole filtered set before the page
+     * is cut, so the sort holds across pages.
+     */
+    private const DERIVED_SORT_COLUMNS = ['campus', 'start_year', 'end_year', 'document_status'];
+
+    /**
+     * One page of the student list in the requested order. Returns the same
+     * shape as BaseModel::paginate().
+     *
+     * @return array{data: array<int, array<string, mixed>>, total: int, per_page: int, current_page: int, last_page: int}
+     */
+    private function paginateStudents(Request $request, int $page, int $perPage, string $where, array $bindings): array
+    {
+        $sortBy  = (string)($request->query('sort_by') ?? '');
+        $sortDir = strtoupper((string)($request->query('sort_dir') ?? 'DESC')) === 'ASC' ? 'ASC' : 'DESC';
+
+        if (in_array($sortBy, self::DERIVED_SORT_COLUMNS, true)) {
+            return $this->paginateByDerivedSort($sortBy, $sortDir, max(1, $page), max(1, min(1000, $perPage)), $where, $bindings);
+        }
+
+        if (!isset(self::SQL_SORT_COLUMNS[$sortBy])) {
+            $sortBy = 'id';
+        }
+        // Age grows as birthdate shrinks, so "age ascending" is birthdate descending.
+        if ($sortBy === 'age') {
+            $sortDir = $sortDir === 'ASC' ? 'DESC' : 'ASC';
+        }
+
+        return $this->studentModel->paginate($page, $perPage, $where, $bindings, self::SQL_SORT_COLUMNS[$sortBy], $sortDir);
+    }
+
+    /**
+     * Sorts the filtered set by a PHP-computed column, then returns one page.
+     * Unknown values (no reg number, no campus, …) always sort last, whichever
+     * way the column runs. Ties keep id order so paging stays stable.
+     *
+     * @return array{data: array<int, array<string, mixed>>, total: int, per_page: int, current_page: int, last_page: int}
+     */
+    private function paginateByDerivedSort(string $sortBy, string $sortDir, int $page, int $perPage, string $where, array $bindings): array
+    {
+        $db       = $this->studentModel->db();
+        $whereSql = $where !== '' ? "WHERE {$where}" : '';
+        $rows     = $db->fetchAll("SELECT id, regnumber, faculty, campus FROM `student` {$whereSql} ORDER BY id", $bindings);
+        // Adds start_year and end_year to every row.
+        $rows     = $this->decorateCohortColumns($rows);
+
+        $keys = [];
+        if ($sortBy === 'campus') {
+            $campusIds = [];
+            foreach ($rows as $r) {
+                $c = (string)($r['campus'] ?? '');
+                if ($c !== '') $campusIds[$c] = true;
+            }
+            $campusNames = [];
+            foreach (array_chunk(array_keys($campusIds), 500) as $chunk) {
+                $ph = implode(',', array_fill(0, count($chunk), '?'));
+                foreach ($db->fetchAll("SELECT id, name FROM `campuses` WHERE id IN ($ph)", $chunk) as $c) {
+                    $campusNames[(string)$c['id']] = mb_strtolower(trim((string)$c['name']));
+                }
+            }
+            foreach ($rows as $r) {
+                $keys[(int)$r['id']] = $campusNames[(string)($r['campus'] ?? '')] ?? null;
+            }
+        } elseif ($sortBy === 'document_status') {
+            $summary = [];
+            foreach (array_chunk(array_map(static fn ($r) => (int)$r['id'], $rows), 500) as $chunk) {
+                $summary += $this->fetchDocumentStatusSummary($chunk);
+            }
+            $rank = ['none' => 0, 'pending' => 1, 'rejected' => 2, 'verified' => 3];
+            foreach ($rows as $r) {
+                $status = $summary[(int)$r['id']]['status'] ?? 'none';
+                $keys[(int)$r['id']] = $rank[$status] ?? 0;
+            }
+        } else {
+            foreach ($rows as $r) {
+                $keys[(int)$r['id']] = $r[$sortBy] ?? null;
+            }
+        }
+
+        usort($rows, static function (array $a, array $b) use ($keys, $sortDir): int {
+            $ka = $keys[(int)$a['id']];
+            $kb = $keys[(int)$b['id']];
+            if ($ka === null || $kb === null) {
+                $cmp = ($ka === null ? 1 : 0) <=> ($kb === null ? 1 : 0);
+                return $cmp !== 0 ? $cmp : (int)$a['id'] <=> (int)$b['id'];
+            }
+            $cmp = $ka <=> $kb;
+            if ($cmp === 0) {
+                return (int)$a['id'] <=> (int)$b['id'];
+            }
+            return $sortDir === 'ASC' ? $cmp : -$cmp;
+        });
+
+        $total = count($rows);
+        $ids   = array_map(
+            static fn ($r) => (int)$r['id'],
+            array_slice($rows, ($page - 1) * $perPage, $perPage)
+        );
+
+        return [
+            'data'         => $this->studentModel->findManyInOrder($ids),
+            'total'        => $total,
+            'per_page'     => $perPage,
+            'current_page' => $page,
+            'last_page'    => (int)ceil($total / $perPage),
+        ];
     }
 
     /**
@@ -227,20 +441,10 @@ class StudentController extends BaseController
         $page    = (int)($request->query('page') ?? 1);
         $perPage = (int)($request->query('per_page') ?? 15);
 
-        $sortBy  = $request->query('sort_by');
-        $sortDir = strtoupper($request->query('sort_dir') ?? 'DESC');
-
-        $allowedSorts = ['id', 'fname', 'lname', 'regnumber', 'email', 'gender', 'nationality'];
-        if (!in_array($sortBy, $allowedSorts, true)) {
-            $sortBy = 'id';
-        }
-        if (!in_array($sortDir, ['ASC', 'DESC'], true)) {
-            $sortDir = 'DESC';
-        }
-
+        // Dean / HOD scope is applied inside buildListFilters.
         [$where, $bindings] = $this->buildListFilters($request);
 
-        $paginated = $this->studentModel->paginate($page, $perPage, $where, $bindings, $sortBy, $sortDir);
+        $paginated = $this->paginateStudents($request, $page, $perPage, $where, $bindings);
 
         // Decorate rows with a human-readable campus_name. One follow-up
         // query per page keeps the list lightweight without changing the
@@ -294,6 +498,8 @@ class StudentController extends BaseController
             }
             unset($r);
 
+            $rows = $this->decorateCohortColumns($rows);
+
             $paginated['data'] = $rows;
         }
 
@@ -316,20 +522,9 @@ class StudentController extends BaseController
         $page    = (int)($request->query('page') ?? 1);
         $perPage = (int)($request->query('per_page') ?? 15);
 
-        $sortBy  = $request->query('sort_by');
-        $sortDir = strtoupper($request->query('sort_dir') ?? 'DESC');
-
-        $allowedSorts = ['id', 'fname', 'lname', 'regnumber', 'email', 'gender', 'nationality'];
-        if (!in_array($sortBy, $allowedSorts, true)) {
-            $sortBy = 'id';
-        }
-        if (!in_array($sortDir, ['ASC', 'DESC'], true)) {
-            $sortDir = 'DESC';
-        }
-
         [$where, $bindings] = $this->buildListFilters($request);
 
-        $paginated = $this->studentModel->paginate($page, $perPage, $where, $bindings, $sortBy, $sortDir);
+        $paginated = $this->paginateStudents($request, $page, $perPage, $where, $bindings);
 
         $rows = $paginated['data'] ?? [];
         if (!empty($rows)) {
@@ -349,6 +544,84 @@ class StudentController extends BaseController
         }
 
         $this->success($response, $paginated, 'Finance student directory fetched.');
+    }
+
+    /**
+     * Adds the cohort columns the Students list shows: age, faculty name,
+     * start year, end year and programme duration.
+     *
+     * Start year and end year come from the registration number (see
+     * RegNumberHelper). The end year needs to know whether the student is in
+     * Health Sciences, so the faculty is resolved first from `student.faculty`
+     * (a faculty id) against the `faculty` table. Each value is null when its
+     * source is missing or malformed, so one bad row never breaks the page.
+     *
+     * @param array<int, array<string, mixed>> $rows
+     * @return array<int, array<string, mixed>>
+     */
+    private function decorateCohortColumns(array $rows): array
+    {
+        $facIds = [];
+        foreach ($rows as $r) {
+            $f = trim((string)($r['faculty'] ?? ''));
+            if ($f !== '') $facIds[$f] = true;
+        }
+
+        $facNameById = [];
+        if (!empty($facIds)) {
+            $ids = array_keys($facIds);
+            $ph  = implode(',', array_fill(0, count($ids), '?'));
+            $db  = $this->studentModel->db();
+            foreach ($db->fetchAll(
+                "SELECT fac_id, fac_name FROM `faculty` WHERE CAST(fac_id AS CHAR) IN ($ph)",
+                $ids
+            ) as $f) {
+                $facNameById[(string)$f['fac_id']] = trim((string)$f['fac_name']);
+            }
+        }
+
+        foreach ($rows as &$r) {
+            $facKey   = trim((string)($r['faculty'] ?? ''));
+            $facName  = $facKey !== '' && isset($facNameById[$facKey]) ? $facNameById[$facKey] : null;
+            $isHealth = $facName !== null && stripos($facName, 'health') !== false;
+            $parsed   = \App\Helpers\RegNumberHelper::tryParse($r['regnumber'] ?? null, $isHealth);
+
+            $r['faculty_name']     = $facName;
+            $r['age']              = self::ageFromBirthdate($r['birthdate'] ?? null);
+            $r['start_year']       = $parsed['startYear'] ?? null;
+            $r['end_year']         = $parsed['endYear'] ?? null;
+            $r['program_duration'] = $parsed['programDuration'] ?? null;
+        }
+        unset($r);
+
+        return $rows;
+    }
+
+    /**
+     * Whole years between a free-text birthdate and today. Accepts the two
+     * live formats (`YYYY-MM-DD` and `D/M/YYYY`, matching dobSql()). Returns
+     * null for anything unreadable or a date in the future.
+     */
+    private static function ageFromBirthdate(?string $raw): ?int
+    {
+        $raw = trim((string)$raw);
+        if ($raw === '') return null;
+
+        if (preg_match('/^(\d{4})-(\d{1,2})-(\d{1,2})/', $raw, $m)) {
+            [, $y, $mo, $d] = $m;
+        } elseif (preg_match('#^(\d{1,2})/(\d{1,2})/(\d{4})#', $raw, $m)) {
+            [, $d, $mo, $y] = $m;
+        } else {
+            return null;
+        }
+
+        if (!checkdate((int)$mo, (int)$d, (int)$y)) return null;
+
+        $dob   = new \DateTimeImmutable(sprintf('%04d-%02d-%02d', $y, $mo, $d));
+        $today = new \DateTimeImmutable('today');
+        if ($dob > $today) return null;
+
+        return (int)$today->diff($dob)->y;
     }
 
     /**
@@ -424,6 +697,11 @@ class StudentController extends BaseController
         $student = $this->studentModel->find($id);
 
         if (!$student) {
+            $this->error($response, 'Student not found', 404);
+        }
+
+        $scope = AcademicScopeService::forUser((array)($request->param('_auth_user') ?? []));
+        if (!AcademicScopeService::allowsDepartment($scope, $student['department'] ?? null)) {
             $this->error($response, 'Student not found', 404);
         }
 
@@ -706,6 +984,14 @@ class StudentController extends BaseController
             $data['regnumber'] = 'CUR/' . $year . '/' . str_pad((string)random_int(1, 99999), 5, '0', STR_PAD_LEFT);
         }
 
+        // Default to Taba Campus if not provided
+        $campusId = null;
+        if (!empty($data['campus'])) {
+            $campusId = $this->resolveCampusByIdOrName((string)$data['campus']);
+        } else {
+            $campusId = $this->getTabaCampusId();
+        }
+
         $id = $this->studentModel->create([
             'regnumber'         => $data['regnumber'],
             'fname'             => trim($data['fname']),
@@ -722,6 +1008,7 @@ class StudentController extends BaseController
             'current_level'     => $data['current_level'] ?? null,
             'registration_date' => $data['registration_date'] ?? date('Y-m-d'),
             'student_state'     => $data['student_state'] ?? 'active',
+            'campus'            => $campusId,
         ]);
 
         $this->success($response, ['id' => $id], 'Student created successfully.', 201);
@@ -768,34 +1055,39 @@ class StudentController extends BaseController
             'intake', 'acc_year', 'sponsor', 'marital_status', 'spouse',
             'disability', 'father', 'mother', 'reference', 'id_card',
             'country', 'province', 'district', 'sector', 'cell', 'village',
-            'student_state',
+            'student_state', 'campus',
         ];
         foreach ($stringCols as $col) {
             if (array_key_exists($col, $data)) {
                 $val = $data[$col];
-                $patch[$col] = is_string($val) ? trim($val) : $val;
+                if ($col === 'campus' && $val !== '') {
+                    // Resolve campus name/id to numeric id
+                    $resolved = $this->resolveCampusByIdOrName((string)$val);
+                    $patch[$col] = $resolved ?: null;
+                } else {
+                    $patch[$col] = is_string($val) ? trim($val) : $val;
+                }
             }
         }
 
-        // Status changes do NOT go through this endpoint. `student_state` is
-        // still accepted here so the details form can post its whole payload
-        // unchanged, but a change of value is refused and redirected to
-        // POST /api/students/:id/status — the only path that captures the
-        // reason and the supporting document the registry asked for, and the
-        // only one that writes the audit trail. Without this guard the main
-        // edit form would remain a way to mark a student deceased with no
-        // evidence and no record of who did it.
+        // Status changes are now allowed through this endpoint for authorized users
+        // (Registrar and Admin). When changed, log it through the audit system.
         if (array_key_exists('student_state', $patch)) {
             $submitted = strtolower(trim((string) $patch['student_state']));
             $current   = strtolower(trim((string) ($student['student_state'] ?? '')));
             if ($submitted !== $current) {
-                $this->error($response, 'Validation failed', 422, [
-                    'student_state' => ['Change a student\'s status from the Status action, so the reason and any supporting document are recorded with it.'],
-                ]);
+                // Log the status change through the audit trail
+                SystemLogService::log(
+                    'UPDATE', 'STUDENTS',
+                    "Student status changed from '{$current}' to '{$submitted}'",
+                    null,
+                    'student'
+                );
+            } else {
+                // Unchanged — drop it rather than rewriting the column with the
+                // same value and dirtying updated_at.
+                unset($patch['student_state']);
             }
-            // Unchanged — drop it rather than rewriting the column with the
-            // same value and dirtying updated_at.
-            unset($patch['student_state']);
         }
 
         // Programme change recomputes the legacy faculty/department fields
@@ -981,7 +1273,9 @@ class StudentController extends BaseController
     }
 
     /**
-     * Delete a student record.
+     * DELETE /api/students/:id
+     * Permanently delete a student from all tables if they have no marks or paid fees.
+     * Only allowed for admin and registrar roles.
      */
     public function delete(Request $request, Response $response): never
     {
@@ -992,8 +1286,33 @@ class StudentController extends BaseController
             $this->error($response, 'Student not found', 404);
         }
 
+        // Check for marks
+        $marksCount = $this->db->fetchOne(
+            "SELECT COUNT(*) AS cnt FROM `student_marks` WHERE student_id = ?",
+            [$id]
+        );
+        if (($marksCount['cnt'] ?? 0) > 0) {
+            $this->error($response, 'Cannot delete student with existing marks', 422);
+        }
+
+        // Check for paid invoices/transactions
+        $paidCount = $this->db->fetchOne(
+            "SELECT COUNT(*) AS cnt FROM `student_invoices` WHERE student_id = ? AND status = 'paid'",
+            [$id]
+        );
+        if (($paidCount['cnt'] ?? 0) > 0) {
+            $this->error($response, 'Cannot delete student with paid invoices', 422);
+        }
+
+        // Delete from related tables
+        $this->db->execute("DELETE FROM `student_marks` WHERE student_id = ?", [$id]);
+        $this->db->execute("DELETE FROM `student_invoices` WHERE student_id = ?", [$id]);
+        $this->db->execute("DELETE FROM `student_attendance` WHERE student_id = ?", [$id]);
+        $this->db->execute("DELETE FROM `student_exemptions` WHERE student_id = ?", [$id]);
+
+        // Delete the student record
         $this->studentModel->delete($id);
-        $this->success($response, null, 'Student deleted successfully.');
+        $this->success($response, null, 'Student deleted permanently from all tables.');
     }
 
     /* ─────────────────────────────────────────────────────────────────
@@ -1169,6 +1488,14 @@ class StudentController extends BaseController
         return $row ? (string)(int)$row['id'] : false;
     }
 
+    private function getTabaCampusId(): null|string
+    {
+        $row = $this->studentModel->db()->fetchOne(
+            "SELECT id FROM `campuses` WHERE LOWER(name) = LOWER('Taba') LIMIT 1"
+        );
+        return $row ? (string)(int)$row['id'] : null;
+    }
+
     /**
      * POST /api/students/bulk-validate
      * Dry-run preview: parses the uploaded CSV, normalises rows, checks
@@ -1330,9 +1657,8 @@ class StudentController extends BaseController
                     $results['skipped']++;
                     continue;
                 }
-                // Resolve campus name/id → numeric id string. Blank stays
-                // blank; an unrecognised value blocks the row instead of
-                // silently dropping the column.
+                // Resolve campus name/id → numeric id string. If blank, default
+                // to Taba Campus; an unrecognised value blocks the row.
                 $campusVal = (string)($assoc['campus'] ?? '');
                 $campusId  = null;
                 if ($campusVal !== '') {
@@ -1343,6 +1669,9 @@ class StudentController extends BaseController
                         continue;
                     }
                     $campusId = $resolved;
+                } else {
+                    // Default to Taba Campus if none provided
+                    $campusId = $this->getTabaCampusId();
                 }
 
                 $regnum = trim((string)($assoc['regnumber'] ?? ''));
@@ -3104,8 +3433,8 @@ class StudentController extends BaseController
             $lower = strtolower((string)$val);
 
             if ($col === 'learning_mode') {
-                // Maps to the legacy `program` column on `student`.
-                $clauses[]  = "LOWER(TRIM({$p}program)) = LOWER(?)";
+                // Use the actual learning_mode column (day, weekend, holiday, evening)
+                $clauses[]  = "LOWER(TRIM({$p}learning_mode)) = LOWER(?)";
                 $bindings[] = trim((string)$val);
                 continue;
             }
@@ -3128,7 +3457,11 @@ class StudentController extends BaseController
             } elseif ($col === 'nationality' && $lower === 'rwandan') {
                 $clauses[] = "LOWER({$p}nationality) IN ('rwandan','rwandana','rwandese')";
             } elseif ($col === 'nationality' && $lower === 'foreign') {
-                $clauses[] = "({$p}nationality IS NOT NULL AND {$p}nationality <> '' AND LOWER({$p}nationality) NOT IN ('rwandan','rwandana','rwandese'))";
+                $clauses[] = "({$p}is_international = 1 OR (
+                    {$p}nationality IS NOT NULL AND {$p}nationality <> ''
+                    AND LOWER(TRIM({$p}nationality))
+                        NOT IN ('rwanda','rwandan','rwandese','rwandaise','')
+                ) OR LOWER(TRIM({$p}nationality)) = 'foreign')";
             } elseif ($col === 'nationality' && $lower === 'unknown') {
                 $clauses[] = "({$p}nationality IS NULL OR {$p}nationality = '')";
             } elseif ($col === 'gender') {
@@ -3434,48 +3767,64 @@ class StudentController extends BaseController
             $categoryBind  = [];
         }
 
-        // Convenience: merge year + campus + category into a single bound
+        // Dean / HOD: every count and breakdown covers only their faculty or
+        // department. Superadmin and unscoped users get no extra condition.
+        $scope    = AcademicScopeService::forUser((array)($request->param('_auth_user') ?? []));
+        $deptCond = AcademicScopeService::departmentCondition($scope, 'department');
+        $deptScope = $deptScopeS = '';
+        $deptBind  = [];
+        if ($deptCond !== null) {
+            $deptScope  = " AND {$deptCond[0]}";
+            $deptScopeS = ' AND ' . str_replace('department', 's.department', $deptCond[0]);
+            $deptBind   = $deptCond[1];
+        }
+
+        // Convenience: merge year + campus + category + scope into a single bound
         // list so each aggregate uses one consistent params array.
-        $combined  = $yearScope . $campusScope . $categoryScope;
-        $combinedS = $yearScopeS . $campusScopeS . $categoryScopeS;
-        $bind      = array_merge($yearBind, $campusBind, $categoryBind);
+        $combined  = $yearScope . $campusScope . $categoryScope . $deptScope;
+        $combinedS = $yearScopeS . $campusScopeS . $categoryScopeS . $deptScopeS;
+        $bind      = array_merge($yearBind, $campusBind, $categoryBind, $deptBind);
 
         $row = $db->fetchOne("
             SELECT
               COUNT(*) AS total,
-              SUM(CASE WHEN LOWER(student_state) = 'active'   THEN 1 ELSE 0 END) AS active,
-              SUM(CASE WHEN LOWER(student_state) = 'inactive' THEN 1 ELSE 0 END) AS inactive,
+              SUM(CASE WHEN LOWER(TRIM(student_state)) IN ('active', 'resume')   THEN 1 ELSE 0 END) AS active,
+              SUM(CASE WHEN LOWER(TRIM(student_state)) IN ('inactive', 'in-active', 'in active') THEN 1 ELSE 0 END) AS inactive,
               SUM(CASE WHEN LOWER(gender) IN ('m','male')     THEN 1 ELSE 0 END) AS male,
               SUM(CASE WHEN LOWER(gender) IN ('f','female')   THEN 1 ELSE 0 END) AS female,
-              SUM(CASE WHEN LOWER(nationality) IN ('rwandan','rwandana','rwandese') THEN 1 ELSE 0 END) AS rwandan,
-              SUM(CASE WHEN nationality IS NOT NULL
-                        AND nationality <> ''
-                        AND LOWER(nationality) NOT IN ('rwandan','rwandana','rwandese')
+              SUM(CASE WHEN LOWER(TRIM(nationality)) IN ('rwandan','rwandana','rwandese') THEN 1 ELSE 0 END) AS rwandan,
+              SUM(CASE WHEN is_international = 1 OR (
+                        nationality IS NOT NULL AND TRIM(nationality) <> ''
+                        AND LOWER(TRIM(nationality)) NOT IN ('rwanda','rwandan','rwandese','rwandaise','')
+                    ) OR LOWER(TRIM(nationality)) = 'foreign'
                         THEN 1 ELSE 0 END) AS foreign_students,
               COUNT(DISTINCT faculty) AS faculties,
               COUNT(DISTINCT acc_year) AS academic_years,
 
               -- ─── Active-only slices (for the Active Students tab) ───
-              SUM(CASE WHEN LOWER(student_state) = 'active' AND LOWER(gender) IN ('m','male')   THEN 1 ELSE 0 END) AS active_male,
-              SUM(CASE WHEN LOWER(student_state) = 'active' AND LOWER(gender) IN ('f','female') THEN 1 ELSE 0 END) AS active_female,
-              SUM(CASE WHEN LOWER(student_state) = 'active'
+              SUM(CASE WHEN LOWER(TRIM(student_state)) IN ('active', 'resume') AND LOWER(gender) IN ('m','male')   THEN 1 ELSE 0 END) AS active_male,
+              SUM(CASE WHEN LOWER(TRIM(student_state)) IN ('active', 'resume') AND LOWER(gender) IN ('f','female') THEN 1 ELSE 0 END) AS active_female,
+              SUM(CASE WHEN LOWER(TRIM(student_state)) IN ('active', 'resume')
                         AND (gender IS NULL OR gender = '' OR LOWER(gender) NOT IN ('m','male','f','female'))
                         THEN 1 ELSE 0 END) AS active_unknown_gender,
-              SUM(CASE WHEN LOWER(student_state) = 'active' AND LOWER(nationality) IN ('rwandan','rwandana','rwandese') THEN 1 ELSE 0 END) AS active_rwandan,
-              SUM(CASE WHEN LOWER(student_state) = 'active'
-                        AND nationality IS NOT NULL AND nationality <> ''
-                        AND LOWER(nationality) NOT IN ('rwandan','rwandana','rwandese')
+              SUM(CASE WHEN LOWER(TRIM(student_state)) IN ('active', 'resume') AND LOWER(TRIM(nationality)) IN ('rwandan','rwandana','rwandese') THEN 1 ELSE 0 END) AS active_rwandan,
+              SUM(CASE WHEN LOWER(TRIM(student_state)) IN ('active', 'resume') AND (
+                        is_international = 1 OR (
+                            nationality IS NOT NULL AND TRIM(nationality) <> ''
+                            AND LOWER(TRIM(nationality)) NOT IN ('rwanda','rwandan','rwandese','rwandaise','')
+                        ) OR LOWER(TRIM(nationality)) = 'foreign'
+                    )
                         THEN 1 ELSE 0 END) AS active_foreign,
-              SUM(CASE WHEN LOWER(student_state) = 'active'
-                        AND (nationality IS NULL OR nationality = '')
+              SUM(CASE WHEN LOWER(TRIM(student_state)) IN ('active', 'resume')
+                        AND (nationality IS NULL OR TRIM(nationality) = '')
                         THEN 1 ELSE 0 END) AS active_unknown_nationality,
               -- Only count faculty/department references that resolve to a real
               -- catalogue row — some legacy student rows hold stray TEXT in these
               -- numeric-id columns (e.g. 'Faculty of Education', 'DMC') which would
               -- otherwise inflate the distinct count.
-              COUNT(DISTINCT CASE WHEN LOWER(student_state) = 'active' AND faculty  <> '' AND faculty    IN (SELECT fac_id FROM faculty)      THEN faculty    END) AS active_faculties,
-              COUNT(DISTINCT CASE WHEN LOWER(student_state) = 'active' AND department <> '' AND department IN (SELECT dep_id FROM departements) THEN department END) AS active_departments,
-              COUNT(DISTINCT CASE WHEN LOWER(student_state) = 'active' AND acc_year <> '' THEN acc_year END) AS active_academic_years
+              COUNT(DISTINCT CASE WHEN LOWER(TRIM(student_state)) IN ('active', 'resume') AND faculty  <> '' AND faculty    IN (SELECT fac_id FROM faculty)      THEN faculty    END) AS active_faculties,
+              COUNT(DISTINCT CASE WHEN LOWER(TRIM(student_state)) IN ('active', 'resume') AND department <> '' AND department IN (SELECT dep_id FROM departements) THEN department END) AS active_departments,
+              COUNT(DISTINCT CASE WHEN LOWER(TRIM(student_state)) IN ('active', 'resume') AND acc_year <> '' THEN acc_year END) AS active_academic_years
             FROM student
             WHERE 1=1{$combined}
         ", $bind) ?: [];
@@ -3537,12 +3886,12 @@ class StudentController extends BaseController
         // not the curriculum. Aggregated separately so the UI can show it on
         // its own card instead of conflating it with the real programme.
         $byLearningMode = $db->fetchAll("
-            SELECT program AS value, program AS label, COUNT(*) AS total
+            SELECT learning_mode AS value, learning_mode AS label, COUNT(*) AS total
             FROM student
-            WHERE LOWER(student_state) = 'active'
-              AND program IS NOT NULL AND program <> ''
+            WHERE LOWER(TRIM(student_state)) = 'active'
+              AND learning_mode IS NOT NULL AND TRIM(learning_mode) <> ''
               {$combined}
-            GROUP BY program
+            GROUP BY LOWER(TRIM(learning_mode))
             ORDER BY total DESC
             LIMIT 20
         ", $bind);
@@ -3579,40 +3928,41 @@ class StudentController extends BaseController
             SELECT DISTINCT s.faculty AS v, f.fac_name AS label
             FROM student s
             LEFT JOIN faculty f ON CAST(f.fac_id AS CHAR) COLLATE utf8mb4_unicode_ci = s.faculty COLLATE utf8mb4_unicode_ci
-            WHERE s.faculty IS NOT NULL AND s.faculty <> ''
+            WHERE s.faculty IS NOT NULL AND s.faculty <> ''{$deptScopeS}
             ORDER BY label IS NULL, label ASC
             LIMIT 100
-        ");
+        ", $deptBind);
         $departments = $db->fetchAll("
             SELECT DISTINCT s.department AS v, d.dep_name AS label
             FROM student s
             LEFT JOIN departements d ON CAST(d.dep_id AS CHAR) COLLATE utf8mb4_unicode_ci = s.department COLLATE utf8mb4_unicode_ci
-            WHERE s.department IS NOT NULL AND s.department <> ''
+            WHERE s.department IS NOT NULL AND s.department <> ''{$deptScopeS}
             ORDER BY label IS NULL, label ASC
             LIMIT 100
-        ");
+        ", $deptBind);
         $levels = $db->fetchAll("
             SELECT DISTINCT s.current_level AS v, l.name AS label
             FROM student s
             LEFT JOIN levels l ON l.id = s.current_level
-            WHERE s.current_level IS NOT NULL AND s.current_level <> ''
+            WHERE s.current_level IS NOT NULL AND s.current_level <> ''{$deptScopeS}
             ORDER BY s.current_level ASC
             LIMIT 50
-        ");
-        $years    = $db->fetchAll("SELECT DISTINCT acc_year AS v, acc_year AS label FROM student WHERE acc_year IS NOT NULL AND acc_year <> '' ORDER BY acc_year DESC LIMIT 30");
-        $programs = $db->fetchAll("SELECT DISTINCT program  AS v, program  AS label FROM student WHERE program  IS NOT NULL AND program  <> '' ORDER BY program  ASC LIMIT 50");
+        ", $deptBind);
+        $years    = $db->fetchAll("SELECT DISTINCT acc_year AS v, acc_year AS label FROM student WHERE acc_year IS NOT NULL AND acc_year <> ''{$deptScope} ORDER BY acc_year DESC LIMIT 30", $deptBind);
+        $programs = $db->fetchAll("SELECT DISTINCT program  AS v, program  AS label FROM student WHERE program  IS NOT NULL AND program  <> ''{$deptScope} ORDER BY program  ASC LIMIT 50", $deptBind);
 
         // Programs/options pulled from the catalogue, with the parent
         // department + faculty so the student edit form can show a single
         // searchable picker that auto-derives faculty/department.
+        $optionScope = AcademicScopeService::departmentCondition($scope, 'o.department_id');
         $options = $db->fetchAll("
             SELECT o.id AS v, o.name AS label, o.department_id, d.fac_id AS faculty_id
             FROM `options` o
             LEFT JOIN `departements` d ON d.dep_id = o.department_id
-            WHERE COALESCE(o.is_active, 1) = 1
+            WHERE COALESCE(o.is_active, 1) = 1" . ($optionScope ? " AND {$optionScope[0]}" : '') . "
             ORDER BY o.name ASC
             LIMIT 1000
-        ");
+        ", $optionScope[1] ?? []);
 
         $asPairs = function (array $rows): array {
             $out = [];
@@ -4126,6 +4476,9 @@ class StudentController extends BaseController
             'marital_status'   => ['label' => 'Marital Status',       'group' => 'Identity', 'sql' => "s.marital_status",                               'alias' => 'marital_status'],
             'student_id'       => ['label' => 'Student ID',           'group' => 'Identity', 'sql' => "s.id",                                           'alias' => 'student_id'],
             'index_number'     => ['label' => 'Index Number',         'group' => 'Identity', 'sql' => "s.index_number",                                 'alias' => 'index_number'],
+            // Derived in PHP (resolveTemplateCell) from birthdate / regnumber /
+            // faculty, so they match the list page. No SQL of their own.
+            '__age'            => ['label' => 'Age',                  'group' => 'Identity', 'sql' => '', 'alias' => '__age'],
 
             // ── Contact ──
             'email'            => ['label' => 'Email',                'group' => 'Contact',  'sql' => "s.email",                                        'alias' => 'email'],
@@ -4148,19 +4501,22 @@ class StudentController extends BaseController
             'disability_type'  => ['label' => 'Disability Type',      'group' => 'Disability', 'sql' => "s.disability",                                 'alias' => 'disability_type'],
 
             // ── Academics ──
-            'faculty_name'     => ['label' => 'Faculty',              'group' => 'Academics', 'sql' => "f.fac_name",                                    'alias' => 'faculty_name'],
-            'department_name'  => ['label' => 'Department',           'group' => 'Academics', 'sql' => "d.dep_name",                                    'alias' => 'department_name'],
+            'faculty_name'     => ['label' => 'Faculty',              'group' => 'Academics', 'sql' => "COALESCE(f.fac_name, s.faculty)",               'alias' => 'faculty_name'],
+            'department_name'  => ['label' => 'Department',           'group' => 'Academics', 'sql' => "COALESCE(d.dep_name, s.department)",           'alias' => 'department_name'],
             'school_name'      => ['label' => 'School',               'group' => 'Academics', 'sql' => "sch.school_name",                               'alias' => 'school_name'],
             'program_name'     => ['label' => 'Programme Name',       'group' => 'Academics', 'sql' => "COALESCE(o.name, s.program)",                   'alias' => 'program_name'],
-            'campus_name'      => ['label' => 'Campus',               'group' => 'Academics', 'sql' => "c.name",                                        'alias' => 'campus_name'],
+            'campus_name'      => ['label' => 'Campus',               'group' => 'Academics', 'sql' => "s.campus",                                       'alias' => 'campus_name'],
             'current_level'    => ['label' => 'Current Level',        'group' => 'Academics', 'sql' => "COALESCE(lvl.name, s.current_level)",           'alias' => 'current_level'],
             'programme_level'  => ['label' => 'Qualification Level',  'group' => 'Academics', 'sql' => "s.programme_level",                             'alias' => 'programme_level'],
             'category'         => ['label' => 'Category',             'group' => 'Academics', 'sql' => "s.category",                                    'alias' => 'category'],
             'intake'           => ['label' => 'Intake',               'group' => 'Academics', 'sql' => "s.intake",                                      'alias' => 'intake'],
             'acc_year'         => ['label' => 'Academic Year',        'group' => 'Academics', 'sql' => "s.acc_year",                                    'alias' => 'acc_year'],
             'student_state'    => ['label' => 'Status',               'group' => 'Academics', 'sql' => "s.student_state",                               'alias' => 'student_state'],
+            'learning_mode'    => ['label' => 'Learning Mode',        'group' => 'Academics', 'sql' => "s.learning_mode",                               'alias' => 'learning_mode'],
             'sponsor'          => ['label' => 'Sponsorship',          'group' => 'Academics', 'sql' => "s.sponsor",                                     'alias' => 'sponsor'],
             'program_code'     => ['label' => 'Programme Code',       'group' => 'Academics', 'sql' => "o.code",                                        'alias' => 'program_code'],
+            '__start_year'     => ['label' => 'Start Year',           'group' => 'Academics', 'sql' => '', 'alias' => '__start_year'],
+            '__end_year'       => ['label' => 'End Year',             'group' => 'Academics', 'sql' => '', 'alias' => '__end_year'],
 
             // ── Academic Progress (computed live from module_marks / module_programs) ──
             // Each is a correlated sub-query keyed on the student's regnumber
@@ -4264,9 +4620,49 @@ class StudentController extends BaseController
      * GET /api/students/export-columns
      * Returns the column registry + group order. Drives the picker UI.
      */
+    /** Per-request cache for exportRegistry(). */
+    private ?array $exportRegistryCache = null;
+
+    /**
+     * Every column the export can produce: the curated registry above, plus
+     * each column of the `student` table that the registry does not already
+     * name. Database-only columns get a generated label and sit in their own
+     * group, so nothing stored on a student is missing from the export.
+     * Credential-like columns are never offered.
+     */
+    private function exportRegistry(): array
+    {
+        if ($this->exportRegistryCache !== null) {
+            return $this->exportRegistryCache;
+        }
+
+        $registry = self::exportColumns();
+        $taken    = [];
+        foreach ($registry as $key => $meta) {
+            $taken[$key] = true;
+            $taken[$meta['alias']] = true;
+        }
+
+        $fields = $this->studentModel->db()->fetchAll('SHOW COLUMNS FROM `student`');
+        foreach ($fields as $field) {
+            $col = (string)($field['Field'] ?? '');
+            if ($col === '' || isset($taken[$col])) continue;
+            if (preg_match('/password|token|secret|remember/i', $col)) continue;
+            $registry[$col] = [
+                'label' => ucwords(str_replace('_', ' ', $col)),
+                'group' => 'All database fields',
+                'sql'   => "s.`{$col}`",
+                'alias' => $col,
+            ];
+        }
+
+        $this->exportRegistryCache = $registry;
+        return $registry;
+    }
+
     public function exportColumnsList(Request $request, Response $response): never
     {
-        $cols = self::exportColumns();
+        $cols = $this->exportRegistry();
         $groups = [];
         foreach ($cols as $key => $meta) {
             $groups[$meta['group']] ??= [];
@@ -4348,7 +4744,7 @@ class StudentController extends BaseController
 
         // Validate every column key against the registry so we never
         // persist a typo that would later blow up the CSV generator.
-        $valid = self::exportColumns();
+        $valid = $this->exportRegistry();
         $normalised = [];
         foreach ($columns as $c) {
             $key = is_array($c) ? (string)($c['key'] ?? '') : (string)$c;
@@ -4428,7 +4824,7 @@ class StudentController extends BaseController
      */
     public function exportCsv(Request $request, Response $response): never
     {
-        $registry = self::exportColumns();
+        $registry = $this->exportRegistry();
 
         // ── Resolve column descriptors ─────────────────────────────────
         // A descriptor is `['key' => string, 'label' => string]`. Loading
@@ -4479,6 +4875,12 @@ class StudentController extends BaseController
                     $neededKeys['programme_level'] = true;
                     $neededKeys['program_name']    = true;
                 }
+                if ($k === '__age') {
+                    $neededKeys['birthdate'] = true;
+                }
+                if ($k === '__end_year') {
+                    $neededKeys['faculty_name'] = true;
+                }
                 continue;
             }
             $neededKeys[$k] = true;
@@ -4502,7 +4904,6 @@ class StudentController extends BaseController
             LEFT JOIN `departements` d   ON d.dep_id     = CAST(NULLIF(s.department, '') AS UNSIGNED)
             LEFT JOIN `schools`      sch ON sch.school_id = f.school_id
             LEFT JOIN `options`      o   ON o.id         = CAST(NULLIF(s.std_option, '') AS UNSIGNED)
-            LEFT JOIN `campuses`     c   ON c.id         = CAST(NULLIF(s.campus, '')     AS UNSIGNED)
             LEFT JOIN `levels`       lvl ON lvl.id       = CAST(NULLIF(s.current_level, '') AS UNSIGNED)
             " . ($where !== '' ? " WHERE {$where}" : "") . "
             ORDER BY s.id DESC
@@ -4553,14 +4954,217 @@ class StudentController extends BaseController
     }
 
     /**
+     * Columns of each academic-year worksheet, in the order of the reporting
+     * template: one row per student, headers in row 1, no title line.
+     */
+    private const YEAR_SHEET_HEADERS = [
+        'No.', 'Registration Number', 'Full Name', 'National ID number', 'Sex', 'Age',
+        'District of origin', 'Program of Study', 'Faculty/School/Department', 'Academic Year of Entry',
+        'Fees', 'Funding source', 'Year of study', 'Learning Mode',
+    ];
+
+    /** Columns of the Unmapped Records sheet, which keeps the identifying fields. */
+    private const UNMAPPED_EXPORT_HEADERS = [
+        'No.', 'Student ID', 'Registration Number', 'Full Name', 'Campus', 'Gender', 'Nationality',
+        'Age', 'District', 'Academic Year', 'Start Year', 'End Year', 'Learning Mode', 'Student Status', 'Reason',
+    ];
+
+    /**
+     * GET /api/students/export-by-academic-year
+     *
+     * Excel workbook of the filtered students, grouped by academic year.
+     * RegistrationYearGroups::YEAR_CODES says which registration codes belong
+     * to each year, so a student appears on every year sheet that includes
+     * their code.
+     *
+     * Sheets: Summary (per-year counts and the filters used), one sheet per
+     * academic year from 2010-2011 to 2026-2027, and Unmapped Records for
+     * numbers that cannot be placed.
+     *
+     * Filters are the list page's own (search, campus, department scope and so
+     * on), so the workbook matches what is on screen. Read-only; the route sits
+     * in the VIEW_STUDENTS group.
+     */
+    public function exportByAcademicYear(Request $request, Response $response): never
+    {
+        $registry = $this->exportRegistry();
+
+        // Registry columns the workbook reads. Age, Start Year and End Year are
+        // derived in PHP by resolveTemplateCell(), so their inputs are fetched too.
+        $keys = [
+            'student_id', 'regnumber', 'full_name', 'campus_name', 'gender', 'nationality',
+            'birthdate', 'district', 'learning_mode', 'student_state', 'faculty_name',
+            'national_id', 'program_name', 'department_name', 'sponsor', 'current_level', 'acc_year',
+        ];
+        $selectParts = [];
+        foreach ($keys as $key) {
+            $selectParts[] = "{$registry[$key]['sql']} AS `{$registry[$key]['alias']}`";
+        }
+
+        // Qualified with the `s` alias, as in exportCsv(), because the query joins
+        // tables that share column names with `student`.
+        [$where, $bindings] = $this->buildListFilters($request, 's');
+
+        $db   = $this->studentModel->db();
+        $rows = $db->fetchAll(
+            "SELECT " . implode(', ', $selectParts) . "
+            FROM `student` s
+            LEFT JOIN `faculty`      f   ON f.fac_id      = CAST(NULLIF(s.faculty, '')    AS UNSIGNED)
+            LEFT JOIN `departements` d   ON d.dep_id      = CAST(NULLIF(s.department, '') AS UNSIGNED)
+            LEFT JOIN `options`      o   ON o.id          = CAST(NULLIF(s.std_option, '') AS UNSIGNED)
+            LEFT JOIN `levels`       lvl ON lvl.id        = CAST(NULLIF(s.current_level, '') AS UNSIGNED)
+            " . ($where !== '' ? " WHERE {$where}" : '') . "
+            ORDER BY s.regnumber, s.id",
+            $bindings
+        );
+
+        // The stored campus is an id. The list page shows its name, so do the same.
+        $campusNames = [];
+        foreach ($db->fetchAll("SELECT id, name FROM `campuses`") as $c) {
+            $campusNames[(string)$c['id']] = (string)$c['name'];
+        }
+
+        // Each academic-year sheet collects every student whose code is in its
+        // list. Numbers that cannot be read or placed go to Unmapped Records.
+        $groups = [];
+        foreach (array_keys(\App\Helpers\RegistrationYearGroups::YEAR_CODES) as $year) {
+            $groups[(string)$year] = [];
+        }
+        $unmapped    = [];
+        $mappedCount = 0;
+        foreach ($rows as $row) {
+            $campusId = (string)($row['campus_name'] ?? '');
+            if (isset($campusNames[$campusId])) {
+                $row['campus_name'] = $campusNames[$campusId];
+            }
+            $info = \App\Helpers\RegistrationYearGroups::classify($row['regnumber'] ?? null);
+
+            if ($info['reason'] !== null) {
+                $unmapped[] = array_merge($this->unmappedCells($row, $registry), [$info['reason']]);
+                continue;
+            }
+
+            $mappedCount++;
+            $entryYear = \App\Helpers\RegistrationYearGroups::entryYear($info['code']);
+            $cells     = $this->yearSheetCells($row, $registry, $entryYear);
+            foreach (\App\Helpers\RegistrationYearGroups::yearsForCode($info['code']) as $year) {
+                $groups[$year][] = $cells;
+            }
+        }
+
+        $book    = new \App\Helpers\StreamingXlsxBook();
+        $summary = $book->addSheet(
+            'Summary',
+            ['Academic Year', 'Registration Codes', 'Number of Students'],
+            'Students by academic year · generated ' . date('Y-m-d H:i')
+        );
+
+        $summaryRows = [];
+        $entries     = 0;
+        foreach (\App\Helpers\RegistrationYearGroups::YEAR_CODES as $year => $codes) {
+            $sheet = $book->addSheet((string)$year, self::YEAR_SHEET_HEADERS);
+            foreach ($groups[(string)$year] as $i => $cells) {
+                $book->addRow($sheet, array_merge([$i + 1], $cells));
+            }
+
+            $count        = count($groups[(string)$year]);
+            $entries     += $count;
+            $summaryRows[] = [(string)$year, implode(', ', $codes), $count];
+        }
+
+        $unmappedSheet = $book->addSheet('Unmapped Records', self::UNMAPPED_EXPORT_HEADERS);
+        foreach ($unmapped as $i => $cells) {
+            $book->addRow($unmappedSheet, array_merge([$i + 1], $cells));
+        }
+
+        foreach ($summaryRows as $line) {
+            $book->addRow($summary, $line);
+        }
+        $book->addRow($summary, []);
+        $book->addRow($summary, ['Students in the workbook (unique)', '', $mappedCount]);
+        $book->addRow($summary, ['Entries across year sheets', '', $entries]);
+        $book->addRow($summary, ['A student appears once per academic year that includes their code.']);
+        $book->addRow($summary, ['Unmapped Records', '', count($unmapped)]);
+        $book->addRow($summary, ['Total exported', '', count($rows)]);
+
+        $filters = $this->describeFilters($request);
+        $book->addRow($summary, []);
+        $book->addRow($summary, ['Filters applied']);
+        foreach ($filters ?: [['(none)', 'All students']] as $pair) {
+            $book->addRow($summary, [$pair[0], $pair[1]]);
+        }
+
+        $book->download('students_by_academic_year_' . date('Y-m-d_His') . '.xlsx');
+    }
+
+    /**
+     * The cells for one student on a year worksheet, in YEAR_SHEET_HEADERS order.
+     * Values go through resolveTemplateCell(), so they read the same as the CSV
+     * export. Academic Year of Entry comes from the registration code, and Fees
+     * has no source on the student record, so it is left blank.
+     *
+     * @param array<string, mixed> $row
+     * @param array<string, array> $registry
+     * @return list<string|int>
+     */
+    private function yearSheetCells(array $row, array $registry, string $entryYear): array
+    {
+        $age        = $this->resolveTemplateCell('__age', $row, $registry);
+        $faculty    = $this->resolveTemplateCell('faculty_name', $row, $registry);
+        $department = $this->resolveTemplateCell('department_name', $row, $registry);
+
+        return [
+            $this->resolveTemplateCell('regnumber', $row, $registry),
+            $this->resolveTemplateCell('full_name', $row, $registry),
+            $this->resolveTemplateCell('national_id', $row, $registry),
+            $this->resolveTemplateCell('gender', $row, $registry),
+            $age === '' ? '' : (int)$age,
+            $this->resolveTemplateCell('district', $row, $registry),
+            $this->resolveTemplateCell('program_name', $row, $registry),
+            implode(' / ', array_filter([$faculty, $department], static fn(string $v): bool => $v !== '')),
+            $entryYear,
+            '',
+            $this->resolveTemplateCell('sponsor', $row, $registry),
+            $this->resolveTemplateCell('current_level', $row, $registry),
+            $this->resolveTemplateCell('learning_mode', $row, $registry),
+        ];
+    }
+
+    /**
+     * The identifying cells for one student on the Unmapped Records sheet, in
+     * UNMAPPED_EXPORT_HEADERS order after "No.", minus the Reason column.
+     *
+     * @param array<string, mixed> $row
+     * @param array<string, array> $registry
+     * @return list<string|int>
+     */
+    private function unmappedCells(array $row, array $registry): array
+    {
+        $age = $this->resolveTemplateCell('__age', $row, $registry);
+        return [
+            (int)($row['student_id'] ?? 0),
+            $this->resolveTemplateCell('regnumber', $row, $registry),
+            $this->resolveTemplateCell('full_name', $row, $registry),
+            $this->resolveTemplateCell('campus_name', $row, $registry),
+            $this->resolveTemplateCell('gender', $row, $registry),
+            $this->resolveTemplateCell('nationality', $row, $registry),
+            $age === '' ? '' : (int)$age,
+            $this->resolveTemplateCell('district', $row, $registry),
+            $this->resolveTemplateCell('acc_year', $row, $registry),
+            $this->resolveTemplateCell('__start_year', $row, $registry),
+            $this->resolveTemplateCell('__end_year', $row, $registry),
+            $this->resolveTemplateCell('learning_mode', $row, $registry),
+            $this->resolveTemplateCell('student_state', $row, $registry),
+        ];
+    }
+
+    /**
      * Columns used when the caller asked for an export without naming any —
      * the filter panel's one-click "download this cohort" button. Enough to
      * identify each student and see the cut the filter made.
      */
     private const DEFAULT_EXPORT_COLUMNS = [
-        'regnumber', 'full_name', 'gender', 'birthdate', 'email', 'phone',
-        'faculty_name', 'department_name', 'program_name', 'current_level',
-        'acc_year', 'student_state', 'country', 'province', 'district', 'sector',
+        'regnumber', 'full_name', 'email', 'phone', 'campus_name', 'gender', 'nationality', 'learning_mode',
     ];
 
     /**
@@ -4723,7 +5327,7 @@ class StudentController extends BaseController
      */
     private function resolveTemplateColumns(string $templateId, Request $request): array
     {
-        $registry = self::exportColumns();
+        $registry = $this->exportRegistry();
 
         if (str_starts_with($templateId, 'sys:')) {
             foreach ($this->systemExportTemplates() as $tpl) {
@@ -4797,6 +5401,18 @@ class StudentController extends BaseController
                 $lvl === 'undergraduate' || str_contains($lvl, 'under')        => 'Bachelors Degree',
                 default                                                        => '',
             };
+        }
+
+        // Cohort columns: same rules as the list page (decorateCohortColumns).
+        if ($key === '__age') {
+            $age = self::ageFromBirthdate($row['birthdate'] ?? null);
+            return $age === null ? '' : (string)$age;
+        }
+        if ($key === '__start_year' || $key === '__end_year') {
+            $isHealth = stripos((string)($row['faculty_name'] ?? ''), 'health') !== false;
+            $parsed   = \App\Helpers\RegNumberHelper::tryParse($row['regnumber'] ?? null, $isHealth);
+            if ($parsed === null) return '';
+            return (string)($key === '__start_year' ? $parsed['startYear'] : $parsed['endYear']);
         }
 
         if ($key === 'disability_status') {
@@ -4925,14 +5541,10 @@ class StudentController extends BaseController
               ORDER BY o.name ASC"
         );
 
-        // CONVERT both branches to a single collation so the UNION doesn't
-        // trip MySQL error 1271 — `student.nationality` and
-        // `student_visa_records.country_of_origin` may be declared with
-        // different collations even when both are utf8mb4. Also filter out
-        // junk-shaped values (national ID numbers stored in `nationality`
-        // by mistake) so the dropdown stays clean.
-        $countryFacet = $db->fetchAll(
-            "SELECT DISTINCT TRIM(country) AS value, TRIM(country) AS label
+        // Fetch all distinct countries and normalize them to clean up spelling variants
+        // (Burundi, Burundaise, Burundese all become "Burundi", etc.)
+        $countryRows = $db->fetchAll(
+            "SELECT DISTINCT TRIM(country) AS raw_country
                FROM (
                  SELECT CONVERT(v2.country_of_origin USING utf8mb4)
                           COLLATE utf8mb4_unicode_ci AS country
@@ -4952,8 +5564,32 @@ class StudentController extends BaseController
               WHERE TRIM(c.country) <> ''
                 AND TRIM(c.country) REGEXP '[A-Za-z]'
                 AND TRIM(c.country) NOT REGEXP '^[0-9]+$'
-              ORDER BY value ASC"
+              ORDER BY raw_country ASC"
         );
+
+        // Normalize countries and deduplicate (all Burundi variants → "Burundi")
+        $normalizedCountries = [];
+        foreach ($countryRows as $row) {
+            $normalized = self::normalizeCountryName($row['raw_country']);
+            if (!isset($normalizedCountries[$normalized])) {
+                $normalizedCountries[$normalized] = [
+                    'value' => $normalized,
+                    'label' => $normalized,
+                ];
+            }
+        }
+        ksort($normalizedCountries);
+        $countryFacet = array_values($normalizedCountries);
+
+        // Fetch all distinct academic years for the year filter dropdown
+        $allYearsResult = $db->fetchAll(
+            "SELECT DISTINCT TRIM(acc_year) AS year
+               FROM `student` s
+              WHERE s.acc_year IS NOT NULL
+                AND TRIM(s.acc_year) <> ''
+              ORDER BY s.acc_year DESC"
+        );
+        $allAcademicYears = array_column($allYearsResult, 'year');
 
         $this->success($response, [
             'data'       => $rows,
@@ -4971,6 +5607,7 @@ class StudentController extends BaseController
             'facets'     => [
                 'program' => $programFacet,
                 'country' => $countryFacet,
+                'all_academic_years' => $allAcademicYears,
             ],
             // Legacy keys preserved so older callers (admin International page
             // before the pagination rework) still work without surprises.
@@ -5057,12 +5694,12 @@ class StudentController extends BaseController
     private function buildInternationalFilters(Request $request): array
     {
         $clauses  = [
-            // International scope = explicit flag OR a non-Rwandan nationality.
-            "(s.is_international = 1 OR (
-                s.nationality IS NOT NULL AND TRIM(s.nationality) <> ''
-                AND LOWER(TRIM(s.nationality))
-                    NOT IN ('rwanda','rwandan','rwandese','rwandaise')
-            ))",
+            // International scope = explicit flag OR non-Rwandan nationality (any country) OR 'foreign' category
+            // This matches the Students list filter for 'foreign' nationality
+            "(s.is_international = 1
+             OR (s.nationality IS NOT NULL AND TRIM(s.nationality) <> ''
+                 AND LOWER(TRIM(s.nationality)) NOT IN ('rwanda','rwandan','rwandese','rwandaise',''))
+             OR LOWER(TRIM(s.nationality)) = 'foreign')",
         ];
         $bindings = [];
 
@@ -5083,11 +5720,14 @@ class StudentController extends BaseController
 
         $country = trim((string)($request->query('country') ?? ''));
         if ($country !== '') {
-            // Match against either the visa-record country OR the
-            // nationality string, case-insensitively.
-            $clauses[]  = "(LOWER(TRIM(v.country_of_origin)) = LOWER(?) OR LOWER(TRIM(s.nationality)) = LOWER(?))";
-            $bindings[] = $country;
-            $bindings[] = $country;
+            // Fuzzy pattern matching for country names: convert "burundi" to "%burund%"
+            // so that Burundi, Burundaise, Burundese all match
+            $pattern = '%' . preg_replace('/[^a-z0-9]/i', '%', $country) . '%';
+
+            $clauses[]  = "(LOWER(TRIM(v.country_of_origin)) LIKE LOWER(?)
+                            OR LOWER(TRIM(s.nationality)) LIKE LOWER(?))";
+            $bindings[] = $pattern;
+            $bindings[] = $pattern;
         }
 
         $hasVisa = strtolower(trim((string)($request->query('has_visa_document') ?? '')));
@@ -5109,6 +5749,30 @@ class StudentController extends BaseController
                            AND DATEDIFF(v.visa_expiry_date, CURDATE()) > 7)";
         } elseif ($expiry === 'missing' || $expiry === 'unknown') {
             $clauses[] = "v.visa_expiry_date IS NULL";
+        }
+
+        // Academic year filter
+        $accYear = trim((string)($request->query('acc_year') ?? ''));
+        if ($accYear !== '') {
+            $clauses[]  = "s.acc_year = ?";
+            $bindings[] = $accYear;
+        }
+
+        // Student status filter (active, inactive, etc.)
+        $studentState = strtolower(trim((string)($request->query('student_state') ?? '')));
+        if ($studentState !== '' && $studentState !== 'all') {
+            $clauses[]  = "LOWER(TRIM(s.student_state)) = ?";
+            $bindings[] = $studentState;
+        }
+
+        // Dean / HOD: international students in their faculty or department only.
+        $deptCond = AcademicScopeService::departmentCondition(
+            AcademicScopeService::forUser((array)($request->param('_auth_user') ?? [])),
+            's.department'
+        );
+        if ($deptCond !== null) {
+            $clauses[] = $deptCond[0];
+            $bindings  = array_merge($bindings, $deptCond[1]);
         }
 
         return [implode(' AND ', $clauses), $bindings];

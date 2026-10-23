@@ -37,6 +37,8 @@ export interface FeeStructure {
   /** comma-separated option IDs from fee_structure_options join */
   option_ids?:          string | null
   student_category?:    StudentCategory | null
+  /** Programme tier the price applies to; null = every programme */
+  programme_category?:  ProgrammeCategory | null
   fee_type:             Exclude<FeeType, 'ARREARS' | 'BURSARY_CREDIT'>
   label:                string
   amount:               number
@@ -52,6 +54,8 @@ export interface FeeStructure {
 
 export type StudentCategory = 'local' | 'international' | 'sponsored' | 'self_sponsored'
 
+export type ProgrammeCategory = 'undergraduate' | 'postgraduate' | 'masters'
+
 export interface CreateFeeStructurePayload {
   academic_year_id:   number
   department_id?:     number | null
@@ -60,6 +64,7 @@ export interface CreateFeeStructurePayload {
   campus_id?:         number | null
   option_ids?:        number[]
   student_category?:  StudentCategory | null
+  programme_category?: ProgrammeCategory | null
   fee_type:           string
   label:              string
   amount:             number

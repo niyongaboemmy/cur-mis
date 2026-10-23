@@ -54,6 +54,7 @@ export default function AdmissionFeesPanel({
   const [openedCheckout, setOpenedCheckout] = useState(false)
   const [showBordereauForm, setShowBordereauForm] = useState(false)
   const [showBankSlipModal, setShowBankSlipModal] = useState(false)
+  const [merchantChoice, setMerchantChoice] = useState<'main' | 'kigali' | null>(null)
 
   const billsQ = useQuery({
     queryKey,
@@ -76,6 +77,8 @@ export default function AdmissionFeesPanel({
   })
 
   const data = billsQ.data?.data
+  // No default: when two merchants exist the payer must pick one before paying.
+  const merchantPending = Boolean(data?.kigali_merchant_code) && merchantChoice === null
   const bills = data?.bills ?? []
   const summary = data?.summary
 
@@ -112,12 +115,23 @@ export default function AdmissionFeesPanel({
    * Registration fee. Without one, the whole-balance link is opened.
    */
   const payNow = async (bill?: AdmissionBill) => {
-    const url = bill?.checkout_url ?? data?.checkout_url
-    if (!url) {
+    if (merchantPending) {
+      toast.error('Choose where to pay first.')
+      return
+    }
+
+    const baseUrl = bill?.checkout_url ?? data?.checkout_url
+    if (!baseUrl) {
       toast.error('Payment information not ready — please try again.')
       billsQ.refetch()
       return
     }
+
+    // The checkout link carries the merchant code as `mhcd`; swap it for the
+    // Kigali Campus code when that option is selected.
+    const url = merchantChoice === 'kigali' && data?.kigali_merchant_code
+      ? withMerchantCode(baseUrl, data.kigali_merchant_code)
+      : baseUrl
 
     window.open(url, '_blank', 'noopener,noreferrer')
 
@@ -201,19 +215,24 @@ export default function AdmissionFeesPanel({
         </div>
 
         {canManage && (
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="rounded-2xl border-2 border-blue-500 bg-blue-50 dark:bg-blue-950/30 p-5 flex flex-col sm:flex-row sm:items-center gap-4">
+            <div className="flex-1">
+              <p className="text-[15px] font-black text-blue-900 dark:text-blue-100 uppercase tracking-tight">
+                Action needed: bill the Registration fee
+              </p>
+              <p className="text-[12px] text-blue-800 dark:text-blue-200 mt-1">
+                The applicant cannot pay or receive a registration number until this is done. They are emailed and notified straight away.
+              </p>
+            </div>
             <button
-              className="btn-primary"
+              className="btn-primary w-full sm:w-auto px-8 py-4 text-[16px] font-black shadow-lg"
               disabled={raiseBills.isPending || (data.billable ?? []).every((b) => b.amount === null)}
               onClick={() => raiseBills.mutate()}
             >
               {raiseBills.isPending
-                ? <><Loader2 className="w-4 h-4 animate-spin" /> Billing…</>
-                : <><ReceiptText className="w-4 h-4" /> Bill applicant</>}
+                ? <><Loader2 className="w-5 h-5 animate-spin" /> Billing…</>
+                : <><ReceiptText className="w-5 h-5" /> Bill applicant</>}
             </button>
-            <p className="text-[12px] text-ink-500 dark:text-ink-400">
-              The applicant is emailed and notified, and can pay straight away.
-            </p>
           </div>
         )}
 
@@ -228,8 +247,37 @@ export default function AdmissionFeesPanel({
     )
   }
 
+  // Priced fee types that have no bill yet (e.g. Registration added after CURSU
+  // was already billed). Without this the validator has no way to raise them.
+  const unbilledPriced = (data.billable ?? []).filter(
+    (b) => b.amount !== null && !bills.some((x) => x.fee_type === b.fee_type),
+  )
+
   return (
     <section className={`card p-6 space-y-5 ${className}`}>
+      {isValidator && canManage && unbilledPriced.length > 0 && (
+        <div className="rounded-2xl border-2 border-blue-500 bg-blue-50 dark:bg-blue-950/30 p-5 flex flex-col sm:flex-row sm:items-center gap-4">
+          <div className="flex-1">
+            <p className="text-[15px] font-black text-blue-900 dark:text-blue-100 uppercase tracking-tight">
+              Action needed: bill {unbilledPriced.map((b) => b.label).join(' and ')}
+            </p>
+            <p className="text-[12px] text-blue-800 dark:text-blue-200 mt-1">
+              {unbilledPriced.map((b) => `${b.label}: ${fmt(b.amount as number)} ${b.currency}`).join(' · ')}.
+              The applicant is emailed and notified straight away.
+            </p>
+          </div>
+          <button
+            className="btn-primary w-full sm:w-auto px-8 py-4 text-[16px] font-black shadow-lg"
+            disabled={raiseBills.isPending}
+            onClick={() => raiseBills.mutate()}
+          >
+            {raiseBills.isPending
+              ? <><Loader2 className="w-5 h-5 animate-spin" /> Billing…</>
+              : <><ReceiptText className="w-5 h-5" /> Bill applicant</>}
+          </button>
+        </div>
+      )}
+
       {/* Unpaid Amount Alert for Applicants */}
       {!isValidator && summary && summary.balance > 0 && (
         <div className="p-4 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800">
@@ -241,6 +289,11 @@ export default function AdmissionFeesPanel({
               <p className="text-[12px] text-amber-700 dark:text-amber-200 mt-1">
                 You have an unpaid balance. Complete payment below to receive your registration number and proceed to enrollment.
               </p>
+              {bills.some(b => b.fee_type === 'REGISTRATION' && b.balance > 0) && (
+                <p className="text-[12px] font-semibold text-amber-900 dark:text-amber-100 mt-2">
+                  You must pay the Registration fee of {fmt(bills.find(b => b.fee_type === 'REGISTRATION')?.balance ?? 0)} RWF before your registration number can be issued.
+                </p>
+              )}
               {/* Payment Progress */}
               <div className="mt-3 space-y-2">
                 <div className="flex justify-between items-center text-[12px]">
@@ -335,7 +388,46 @@ export default function AdmissionFeesPanel({
           value={data.merchant_code || '—'}
           onCopy={() => copy('Merchant code', data.merchant_code)}
         />
+        {data.kigali_merchant_code && (
+          <DetailRow
+            label="Kigali Campus Merchant code"
+            value={data.kigali_merchant_code}
+            onCopy={() => copy('Kigali Campus Merchant code', data.kigali_merchant_code)}
+          />
+        )}
       </div>
+
+      {/* Which merchant the Pay buttons settle into */}
+      {data.kigali_merchant_code && (
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+          <p className="text-[11px] font-bold uppercase tracking-widest text-ink-400">Pay to</p>
+          <div className="inline-flex rounded-lg border border-ink-200 dark:border-ink-700 p-0.5 self-start">
+            {([
+              { key: 'main', label: 'Main merchant', code: data.merchant_code },
+              { key: 'kigali', label: 'Kigali Campus', code: data.kigali_merchant_code },
+            ] as const).map((opt) => (
+              <button
+                key={opt.key}
+                type="button"
+                aria-pressed={merchantChoice === opt.key}
+                onClick={() => setMerchantChoice(opt.key)}
+                className={`px-3 h-8 rounded-md text-[12px] font-semibold transition-colors ${
+                  merchantChoice === opt.key
+                    ? 'bg-primary-600 text-white'
+                    : 'text-ink-600 dark:text-ink-300 hover:bg-ink-100 dark:hover:bg-ink-800'
+                }`}
+              >
+                {opt.label} <span className="font-mono opacity-80">{opt.code}</span>
+              </button>
+            ))}
+          </div>
+          {merchantPending && (
+            <p className="text-[12px] font-semibold text-amber-700 dark:text-amber-300">
+              Select where to pay to enable payment.
+            </p>
+          )}
+        </div>
+      )}
 
       {/* The bills */}
       <div className="rounded-xl border border-ink-100 dark:border-ink-800 divide-y divide-ink-100 dark:divide-ink-800 overflow-hidden">
@@ -394,7 +486,8 @@ export default function AdmissionFeesPanel({
                     <button
                       className="btn-primary font-semibold"
                       onClick={() => payNow(bill)}
-                      title="Pay via Urubuto (MTN MoMo / Airtel Money)"
+                      disabled={merchantPending}
+                      title={merchantPending ? 'Select where to pay first' : 'Pay via Urubuto (MTN MoMo / Airtel Money)'}
                     >
                       <CreditCard className="w-4 h-4" />
                       Pay {fmt(bill.balance)} RWF
@@ -403,7 +496,12 @@ export default function AdmissionFeesPanel({
 
                   {/* Validator: Open payment page */}
                   {isValidator && (
-                    <button className="btn-primary" onClick={() => payNow(bill)}>
+                    <button
+                      className="btn-primary"
+                      onClick={() => payNow(bill)}
+                      disabled={merchantPending}
+                      title={merchantPending ? 'Select where to pay first' : undefined}
+                    >
                       <CreditCard className="w-4 h-4" />
                       Open payment page
                     </button>
@@ -581,7 +679,7 @@ export default function AdmissionFeesPanel({
       {/* Bank Slip Modal */}
       {showBankSlipModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 dark:bg-black/70 backdrop-blur-sm p-4">
-          <div className="w-[60%] h-[90vh] max-h-[90vh] bg-white dark:bg-ink-800 rounded-xl shadow-2xl flex flex-col">
+          <div className="w-full h-full bg-white dark:bg-ink-800 rounded-xl shadow-2xl flex flex-col">
             {/* Modal Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-ink-100 dark:border-ink-700 shrink-0">
               <div className="flex items-center gap-2">
@@ -601,7 +699,7 @@ export default function AdmissionFeesPanel({
             <div className="flex-1 overflow-hidden bg-white dark:bg-ink-900">
               <iframe
                 src="https://cur.ac.rw/umis/finance/bank_slip/index.php"
-                className="w-full h-full border-none"
+                className="block w-full h-full border-0 bg-white"
                 title="Bank Slip Portal"
               />
             </div>
@@ -716,6 +814,17 @@ function Header({ title, sub }: { title: string; sub: string }) {
       <p className="section-sub mt-1 max-w-2xl">{sub}</p>
     </div>
   )
+}
+
+/** Same Urubuto Pay link, pointed at another merchant (the `mhcd` parameter). */
+function withMerchantCode(url: string, merchantCode: string): string {
+  try {
+    const u = new URL(url)
+    u.searchParams.set('mhcd', merchantCode)
+    return u.toString()
+  } catch {
+    return url
+  }
 }
 
 function DetailRow({

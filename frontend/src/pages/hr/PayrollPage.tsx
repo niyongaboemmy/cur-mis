@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
@@ -10,7 +10,6 @@ import {
   Pencil,
   Eye,
   X,
-  Settings2,
   Info,
   Mail,
   Phone,
@@ -38,63 +37,20 @@ import EmployeeDeductionsModal from "./EmployeeDeductionsModal";
 import {
   hrService,
   type PayrollRow,
-  type PayrollEntry,
   type PayrollListParams,
   type PaymentMethod,
-  type PayrollConfig,
+  type PayrollRules,
 } from "@/services/hrService";
 import { useDebounce } from "@/hooks/useDebounce";
 import { PERMISSIONS } from "@/constants";
 import { usePermission } from "@/utils/permissions";
+import {
+  computePayroll,
+  payePreview,
+  responsibilityAmount,
+} from "@/utils/payrollCalc";
 import ModalPortal from "@/components/ui/ModalPortal";
-
-/* ══════════════════════════════════════════════════════════════════════
-   PAYE FORMULA  (Rwanda Income Tax brackets — configurable)
-   ══════════════════════════════════════════════════════════════════════ */
-
-export interface FormulaConfig {
-  b1: number; // bracket 1 ceiling  (≤ b1 → 0%)
-  b2: number; // bracket 2 ceiling
-  b3: number; // bracket 3 ceiling
-  r1: number; // rate bracket 2  (0–1, e.g. 0.10 = 10%)
-  r2: number; // rate bracket 3
-  r3: number; // rate bracket 4+
-}
-
-const DEFAULT_FORMULA: FormulaConfig = {
-  b1: 60_000,
-  b2: 100_000,
-  b3: 200_000,
-  r1: 0.1,
-  r2: 0.2,
-  r3: 0.3,
-};
-
-const FORMULA_KEY = "cur-mis-paye-formula";
-
-function loadFormula(): FormulaConfig {
-  try {
-    const raw = localStorage.getItem(FORMULA_KEY);
-    return raw ? { ...DEFAULT_FORMULA, ...JSON.parse(raw) } : DEFAULT_FORMULA;
-  } catch {
-    return DEFAULT_FORMULA;
-  }
-}
-
-function saveFormula(f: FormulaConfig) {
-  localStorage.setItem(FORMULA_KEY, JSON.stringify(f));
-}
-
-/** Precise (unrounded) PAYE from gross using progressive brackets. */
-function calcPaye(gross: number, f: FormulaConfig): number {
-  if (gross <= 0) return 0;
-  if (gross <= f.b1) return 0;
-  const cum1 = (f.b2 - f.b1) * f.r1;
-  if (gross <= f.b2) return (gross - f.b1) * f.r1;
-  const cum2 = cum1 + (f.b3 - f.b2) * f.r2;
-  if (gross <= f.b3) return cum1 + (gross - f.b2) * f.r2;
-  return cum2 + (gross - f.b3) * f.r3;
-}
+import ResponsibilityRolesInput from "@/components/hr/ResponsibilityRolesInput";
 
 /* ══════════════════════════════════════════════════════════════════════
    HELPERS
@@ -162,6 +118,34 @@ type DrawerRow = {
   };
 };
 
+/* Staff category filter buttons. Each has its own color when selected. */
+const CATEGORY_FILTERS = [
+  {
+    value: "",
+    label: "All",
+    active: "bg-ink-800 border-ink-800 text-white dark:bg-ink-100 dark:text-ink-900",
+    idle: "bg-white border-ink-200 text-ink-600 hover:bg-ink-50 dark:bg-transparent dark:border-ink-600 dark:text-ink-300",
+  },
+  {
+    value: "Academic",
+    label: "Academic",
+    active: "bg-blue-600 border-blue-600 text-white",
+    idle: "bg-white border-blue-200 text-blue-700 hover:bg-blue-50 dark:bg-transparent dark:border-blue-800 dark:text-blue-300",
+  },
+  {
+    value: "Administrative",
+    label: "Administrative",
+    active: "bg-emerald-600 border-emerald-600 text-white",
+    idle: "bg-white border-emerald-200 text-emerald-700 hover:bg-emerald-50 dark:bg-transparent dark:border-emerald-800 dark:text-emerald-300",
+  },
+  {
+    value: "unclassified",
+    label: "Not classified",
+    active: "bg-amber-500 border-amber-500 text-white",
+    idle: "bg-white border-amber-200 text-amber-700 hover:bg-amber-50 dark:bg-transparent dark:border-amber-800 dark:text-amber-300",
+  },
+];
+
 /* ══════════════════════════════════════════════════════════════════════
    MAIN PAGE
    ══════════════════════════════════════════════════════════════════════ */
@@ -171,8 +155,13 @@ export default function PayrollPage() {
   const canManage = usePermission(PERMISSIONS.MANAGE_HR_EMPLOYEES);
   const qc = useQueryClient();
 
-  const [formula, setFormula] = useState<FormulaConfig>(loadFormula);
-  const [showFormulaModal, setShowFM] = useState(false);
+  const { data: rulesRes } = useQuery({
+    queryKey: ["hr-payroll-rules"],
+    queryFn: ({ signal }) => hrService.getPayrollRules(signal),
+    staleTime: 5 * 60 * 1000,
+  });
+  const rules = rulesRes?.data;
+
   const [showCopyModal, setShowCopy] = useState(false);
   const [editing, setEditing] = useState<PayrollRow | null>(null);
   const [drawerRow, setDrawerRow] = useState<DrawerRow | null>(null);
@@ -210,6 +199,7 @@ export default function PayrollPage() {
   const [q, setQ] = useState(sp.get("q") ?? "");
   const dq = useDebounce(q, 300);
   const status = sp.get("status") ?? "";
+  const category = sp.get("staff_category") ?? "";
 
   const setF = (key: string, val: string) => {
     const c = new URLSearchParams(sp);
@@ -223,6 +213,7 @@ export default function PayrollPage() {
     per_page: PER_PAGE,
     q: dq || undefined,
     status: status || undefined,
+    staff_category: (category || undefined) as PayrollListParams["staff_category"],
     period_year: periodYear,
     period_month: periodMonth,
   };
@@ -266,7 +257,9 @@ export default function PayrollPage() {
     () =>
       rows.map((row: PayrollRow) => {
         const effectiveGross = n0(row.gross_salary) || n0(row.salary);
-        const payeFormula = calcPaye(effectiveGross, formula); // precise
+        const payeFormula = rules
+          ? payePreview(effectiveGross, rules.paye_bands) // precise
+          : 0;
         const asPerHr = n0(row.paye); // stored DB value
         const difference = payeFormula - asPerHr; // can be fractional
         const toBeUsed = asPerHr; // what was recorded
@@ -282,7 +275,7 @@ export default function PayrollPage() {
           cbhi,
         };
       }),
-    [rows, formula],
+    [rows, rules],
   );
 
   /* ── totals ───────────────────────────────────────────────────────── */
@@ -300,13 +293,6 @@ export default function PayrollPage() {
       ),
     [computed],
   );
-
-  /* ── formula save callback ────────────────────────────────────────── */
-  const onFormulaSave = useCallback((f: FormulaConfig) => {
-    saveFormula(f);
-    setFormula(f);
-    setShowFM(false);
-  }, []);
 
   const markPaidMutation = useMutation({
     mutationFn: ({
@@ -367,12 +353,6 @@ export default function PayrollPage() {
               <Copy className="w-3.5 h-3.5" /> Copy to Period
             </button>
           )}
-          {/* Formula settings */}
-          {/* {canManage && (
-            <button className="btn-secondary btn-sm gap-1.5" onClick={() => setShowFM(true)}>
-              <Settings2 className="w-3.5 h-3.5" /> Formula settings
-            </button>
-          )} */}
           {/* Period nav */}
           <button className="icon-btn" onClick={prevMonth}>
             <ChevronLeft className="w-4 h-4" />
@@ -405,21 +385,28 @@ export default function PayrollPage() {
         </div>
       </div>
 
-      {/* ── formula preview pill ── */}
-      <div className="flex items-center gap-2 text-[11px] text-ink-400 dark:text-ink-500">
-        <Info className="w-3.5 h-3.5 shrink-0" />
-        <span className="font-mono">
-          PAYE = IF(Gross ≤ {fmt(formula.b1)}, 0, IF(≤ {fmt(formula.b2)}, (G–
-          {fmt(formula.b1)})×{(formula.r1 * 100).toFixed(0)}%, IF(≤{" "}
-          {fmt(formula.b3)}, {fmt((formula.b2 - formula.b1) * formula.r1)}+(G–
-          {fmt(formula.b2)})×{(formula.r2 * 100).toFixed(0)}%,
-          {fmt(
-            (formula.b2 - formula.b1) * formula.r1 +
-              (formula.b3 - formula.b2) * formula.r2,
-          )}
-          +(G–{fmt(formula.b3)})×{(formula.r3 * 100).toFixed(0)}%)))
-        </span>
-      </div>
+      {/* ── PAYE bands pill (from the server rules) ── */}
+      {rules && (
+        <div className="flex items-center gap-2 text-[11px] text-ink-400 dark:text-ink-500">
+          <Info className="w-3.5 h-3.5 shrink-0" />
+          <span>
+            Monthly PAYE:{" "}
+            {rules.paye_bands.map((b, i, arr) => {
+              const lower = i === 0 ? 0 : arr[i - 1].upper ?? 0;
+              const range =
+                b.upper == null
+                  ? `above ${fmt(lower)}`
+                  : `${fmt(lower)}–${fmt(b.upper)}`;
+              return (
+                <span key={i}>
+                  {i > 0 && " · "}
+                  {(b.rate * 100).toFixed(0)}% on {range}
+                </span>
+              );
+            })}
+          </span>
+        </div>
+      )}
 
       {/* ── filters ── */}
       <div className="card p-3 flex items-center gap-3 flex-wrap">
@@ -447,6 +434,27 @@ export default function PayrollPage() {
             <option value="Terminated">Terminated</option>
           </select>
         </div>
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="text-[11px] font-bold text-ink-400 uppercase tracking-wider mr-1">
+            Category
+          </span>
+          {CATEGORY_FILTERS.map((c) => {
+            const active = category === c.value;
+            return (
+              <button
+                key={c.value || "all"}
+                type="button"
+                aria-pressed={active}
+                onClick={() => setF("staff_category", c.value)}
+                className={`px-3 py-1.5 rounded-full text-[12px] font-semibold border transition-colors ${
+                  active ? c.active : c.idle
+                }`}
+              >
+                {c.label}
+              </button>
+            );
+          })}
+        </div>
         {isFetching && !isLoading && (
           <Loader2 className="w-4 h-4 animate-spin text-ink-300" />
         )}
@@ -471,7 +479,7 @@ export default function PayrollPage() {
                 <th className="px-3 py-2.5 text-right">
                   PAYE
                   <span className="ml-1 text-[9px] font-normal text-ink-300 normal-case">
-                    (formula)
+                    (calculated)
                   </span>
                 </th>
                 <th className="px-3 py-2.5 text-right">As per HR</th>
@@ -738,23 +746,14 @@ export default function PayrollPage() {
         )}
       </div>
 
-      {/* Edit gross modal */}
-      {editing && (
-        <EditGrossModal
+      {/* Edit payroll modal */}
+      {editing && rules && (
+        <EditPayrollModal
           row={editing}
           periodYear={periodYear}
           periodMonth={periodMonth}
-          formula={formula}
+          rules={rules}
           onClose={() => setEditing(null)}
-        />
-      )}
-
-      {/* Formula settings modal */}
-      {showFormulaModal && (
-        <FormulaModal
-          current={formula}
-          onSave={onFormulaSave}
-          onClose={() => setShowFM(false)}
         />
       )}
 
@@ -864,43 +863,33 @@ export default function PayrollPage() {
 }
 
 /* ══════════════════════════════════════════════════════════════════════
-   EDIT GROSS MODAL  — only gross is editable; PAYE auto-calculates
+   EDIT PAYROLL MODAL  — HR enters basic salary, responsibility role and
+   arrears. Every other figure is calculated by the CUR payroll procedure.
    ══════════════════════════════════════════════════════════════════════ */
-const DEFAULT_CONFIG: PayrollConfig = {
-  rssb_employee_rate: 6,
-  rssb_employer_rate: 6,
-  maternity_employee_rate: 0.3,
-  maternity_employer_rate: 0.3,
-  cbhi_employee_rate: 5,
-  cbhi_employer_rate: 5,
-};
+const pct = (rate: number | undefined) =>
+  rate == null ? "" : `${Number((rate * 100).toFixed(2))}%`;
 
-function EditGrossModal({
+function EditPayrollModal({
   row,
   periodYear,
   periodMonth,
-  formula,
+  rules,
   onClose,
 }: {
   row: PayrollRow;
   periodYear: number;
   periodMonth: number;
-  formula: FormulaConfig;
+  rules: PayrollRules;
   onClose: () => void;
 }) {
   const qc = useQueryClient();
-  const effectiveGross = n0(row.gross_salary) || n0(row.salary);
-  const [gross, setGross] = useState(effectiveGross);
-
-  const { data: configRes } = useQuery({
-    queryKey: ["hr-payroll-config"],
-    queryFn: ({ signal }) => hrService.getPayrollConfig(signal),
-    staleTime: 5 * 60 * 1000,
-  });
-  const cfg = configRes?.data ?? DEFAULT_CONFIG;
-
-  const rssbRate = (cfg.rssb_employee_rate + cfg.maternity_employee_rate) / 100;
-  const cbhiRate = cfg.cbhi_employee_rate / 100;
+  const [basic, setBasic] = useState(n0(row.basic_salary) || n0(row.salary));
+  const [role, setRole] = useState<string>(row.responsibility_role ?? "");
+  const [insurance, setInsurance] = useState<"RAMA" | "OTHER">(
+    row.insurance_type === "OTHER" ? "OTHER" : "RAMA",
+  );
+  const [premium, setPremium] = useState<number>(Number(row.insurance_premium ?? 0));
+  const [arrears, setArrears] = useState(n0(row.arrears));
 
   // Auto-fetch active per-employee deductions for this period
   const { data: dedRes } = useQuery({
@@ -917,31 +906,32 @@ function EditGrossModal({
   const activeDeds = dedRes?.data?.deductions ?? [];
   const otherDedTotal = dedRes?.data?.total ?? 0;
 
-  const payeFormula = calcPaye(gross, formula);
-  const rssb = gross * rssbRate;
-  const maternity = gross * (cfg.maternity_employee_rate / 100);
-  const netBeforeCbhi = Math.max(0, gross - payeFormula - rssb - otherDedTotal);
-  const cbhi = netBeforeCbhi * cbhiRate;
-  const net = Math.max(0, netBeforeCbhi - cbhi);
+  const calc = computePayroll(
+    {
+      basicSalary: basic,
+      responsibilityAmount: responsibilityAmount(rules, role),
+      arrears,
+      otherDeductions: otherDedTotal,
+      insurance,
+      insurancePremium: premium,
+    },
+    rules,
+  );
+  const ratesOf = rules.rates;
 
   const save = useMutation({
     mutationFn: () =>
       hrService.payrollUpsert({
-        emp_id: row.id,
+        emp_id: Number(row.id),
         period_year: periodYear,
         period_month: periodMonth,
-        basic_salary: n0(row.basic_salary) || gross,
-        housing_allowance: n0(row.housing_allowance),
-        transport_allowance: n0(row.transport_allowance),
-        other_allowances: n0(row.other_allowances),
-        gross_salary: gross,
-        paye: payeFormula,
-        rssb: rssb - maternity,
-        maternity,
-        cbhi,
+        basic_salary: basic,
+        responsibility_role: role || null,
+        insurance_type: insurance,
+        insurance_premium: premium,
+        arrears,
         other_deductions: otherDedTotal,
-        net_salary: net,
-      } as PayrollEntry & { maternity: number }),
+      }),
     onSuccess: () => {
       toast.success("Payroll updated.");
       qc.invalidateQueries({ queryKey: ["hr-payroll"] });
@@ -951,15 +941,17 @@ function EditGrossModal({
       toast.error(e?.response?.data?.message ?? "Save failed"),
   });
 
+  const inputClass = "input text-right text-[15px] font-semibold tabular-nums";
+
   return (
     <ModalPortal>
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-900/60 backdrop-blur-sm p-4">
-        <div className="bg-white dark:bg-ink-800 rounded-xl shadow-2xl w-full max-w-md">
+        <div className="bg-white dark:bg-ink-800 rounded-xl shadow-2xl w-full max-w-md max-h-[90vh] flex flex-col">
           {/* header */}
           <div className="flex items-center justify-between px-5 py-4 border-b border-ink-100 dark:border-ink-700">
             <div>
               <h3 className="font-bold text-[15px] text-ink-900 dark:text-white">
-                Edit Gross Salary
+                Edit Payroll
               </h3>
               <p className="text-[12px] text-ink-500">
                 {row.full_name} · {row.emp_code} · {MONTHS[periodMonth - 1]}{" "}
@@ -972,42 +964,108 @@ function EditGrossModal({
           </div>
 
           {/* body */}
-          <div className="p-5 space-y-4">
-            {/* Gross input */}
+          <div className="p-5 space-y-4 overflow-y-auto">
             <div>
               <label className="block text-[10px] font-bold text-ink-500 uppercase tracking-wider mb-1">
-                Gross Salary (RWF)
+                Basic Salary (RWF)
               </label>
               <input
                 type="number"
                 min="0"
                 step="1"
-                className="input text-right text-[15px] font-semibold tabular-nums"
-                value={gross || ""}
-                onChange={(e) => setGross(parseFloat(e.target.value) || 0)}
+                className={inputClass}
+                value={basic || ""}
+                onChange={(e) => setBasic(parseFloat(e.target.value) || 0)}
                 autoFocus
               />
             </div>
 
-            {/* Computed breakdown */}
+            <div>
+              <label className="block text-[10px] font-bold text-ink-500 uppercase tracking-wider mb-1">
+                Responsibility Allowance
+              </label>
+              <ResponsibilityRolesInput
+                value={role}
+                onChange={setRole}
+                roles={rules.responsibility_roles}
+              />
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-bold text-ink-500 uppercase tracking-wider mb-1">
+                Health Insurance
+              </label>
+              <select
+                className="input text-[13px]"
+                value={insurance}
+                onChange={(e) => setInsurance(e.target.value as "RAMA" | "OTHER")}
+              >
+                <option value="RAMA">RAMA</option>
+                <option value="OTHER">Other insurer (e.g. RADIANT) — no RAMA</option>
+              </select>
+            </div>
+
+            {insurance === "OTHER" && (
+              <div>
+                <label className="block text-[10px] font-bold text-ink-500 uppercase tracking-wider mb-1">
+                  RADIANT premium (RWF / month)
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  className="input text-right text-[13px]"
+                  value={premium || ""}
+                  onChange={(e) => setPremium(parseFloat(e.target.value) || 0)}
+                />
+              </div>
+            )}
+
+            <div>
+              <label className="block text-[10px] font-bold text-ink-500 uppercase tracking-wider mb-1">
+                Arrears (RWF, if any)
+              </label>
+              <input
+                type="number"
+                min="0"
+                step="1"
+                className={inputClass}
+                value={arrears || ""}
+                onChange={(e) => setArrears(parseFloat(e.target.value) || 0)}
+              />
+            </div>
+
+            {/* Calculated breakdown */}
             <div className="rounded-lg border border-ink-100 dark:border-ink-700 overflow-hidden">
               <div className="bg-ink-50 dark:bg-ink-700/30 px-4 py-2 text-[10px] font-bold text-ink-400 uppercase tracking-wider">
-                Calculated deductions
+                Calculated (CUR procedure)
               </div>
               <div className="divide-y divide-ink-100 dark:divide-ink-700">
+                <ComputedRow label="Housing (basic ÷ 7)" value={calc.housing_allowance} accent="text-ink-700 dark:text-ink-200" />
+                <ComputedRow label="Transport (basic ÷ 7)" value={calc.transport_allowance} accent="text-ink-700 dark:text-ink-200" />
+                <ComputedRow label="Total gross" value={calc.gross} accent="text-ink-900 dark:text-white" />
                 <ComputedRow
-                  label="PAYE (TPR)"
-                  value={payeFormula}
+                  label="PAYE"
+                  value={calc.paye}
                   accent="text-red-600 dark:text-red-400"
                 />
                 <ComputedRow
-                  label={`RSSB (${cfg.rssb_employee_rate}% + ${cfg.maternity_employee_rate}% maternity)`}
-                  value={rssb}
+                  label={`Pension (${pct(ratesOf.pension_employee)})`}
+                  value={calc.pension_employee}
                   accent="text-orange-600 dark:text-orange-400"
                 />
                 <ComputedRow
-                  label={`CBHI (${cfg.cbhi_employee_rate}%)`}
-                  value={cbhi}
+                  label={`Maternity (${pct(ratesOf.maternity_employee)})`}
+                  value={calc.maternity_employee}
+                  accent="text-orange-600 dark:text-orange-400"
+                />
+                <ComputedRow
+                  label={`RAMA (${pct(ratesOf.rama_employee)})`}
+                  value={calc.rama_employee}
+                  accent="text-orange-600 dark:text-orange-400"
+                />
+                <ComputedRow
+                  label={`CBHI (${pct(ratesOf.cbhi_employee)} of net salary)`}
+                  value={calc.cbhi}
                   accent="text-sky-600 dark:text-sky-400"
                 />
                 {/* Per-employee deductions */}
@@ -1028,21 +1086,31 @@ function EditGrossModal({
                 )}
                 <div className="flex items-center justify-between px-4 py-2.5 bg-emerald-50 dark:bg-emerald-500/10">
                   <span className="text-[12px] font-bold text-emerald-700 dark:text-emerald-300">
-                    Net Salary
+                    Net Pay
                   </span>
                   <span className="font-bold text-[14px] text-emerald-800 dark:text-emerald-200 tabular-nums">
-                    {fmt(net)}
+                    {fmt(calc.net_pay)}
                   </span>
                 </div>
               </div>
             </div>
 
-            {/* Deductions note */}
-            <p className="text-[11px] text-ink-400 dark:text-ink-500 font-mono bg-ink-50 dark:bg-ink-700/20 rounded px-3 py-2">
-              Net = Gross − PAYE − RSSB(
-              {cfg.rssb_employee_rate + cfg.maternity_employee_rate}%) − CBHI(
-              {cfg.cbhi_employee_rate}%)
-              {otherDedTotal > 0 ? ` − Other (${fmt(otherDedTotal)} RWF)` : ""}
+            {/* Employer cost */}
+            <div className="rounded-lg border border-ink-100 dark:border-ink-700 overflow-hidden">
+              <div className="bg-ink-50 dark:bg-ink-700/30 px-4 py-2 text-[10px] font-bold text-ink-400 uppercase tracking-wider">
+                Paid by CUR
+              </div>
+              <div className="divide-y divide-ink-100 dark:divide-ink-700">
+                <ComputedRow label={`Pension (${pct(ratesOf.pension_employer)})`} value={calc.pension_employer} accent="text-ink-700 dark:text-ink-200" />
+                <ComputedRow label={`Occupational hazard (${pct(ratesOf.occupational_employer)})`} value={calc.occupational_employer} accent="text-ink-700 dark:text-ink-200" />
+                <ComputedRow label={`Maternity (${pct(ratesOf.maternity_employer)})`} value={calc.maternity_employer} accent="text-ink-700 dark:text-ink-200" />
+                <ComputedRow label={`RAMA (${pct(ratesOf.rama_employer)})`} value={calc.rama_employer} accent="text-ink-700 dark:text-ink-200" />
+                <ComputedRow label="Total cost to CUR" value={calc.employer_cost} accent="text-ink-900 dark:text-white" />
+              </div>
+            </div>
+
+            <p className="text-[11px] text-ink-400 dark:text-ink-500 bg-ink-50 dark:bg-ink-700/20 rounded px-3 py-2">
+              Amounts are recalculated by the server when you save.
             </p>
           </div>
 
@@ -1054,7 +1122,7 @@ function EditGrossModal({
             <button
               className="btn-primary"
               onClick={() => save.mutate()}
-              disabled={save.isPending || gross <= 0}
+              disabled={save.isPending || basic <= 0}
             >
               {save.isPending && (
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -1068,254 +1136,6 @@ function EditGrossModal({
   );
 }
 
-/* ══════════════════════════════════════════════════════════════════════
-   FORMULA SETTINGS MODAL
-   ══════════════════════════════════════════════════════════════════════ */
-function FormulaModal({
-  current,
-  onSave,
-  onClose,
-}: {
-  current: FormulaConfig;
-  onSave: (f: FormulaConfig) => void;
-  onClose: () => void;
-}) {
-  const [f, setF] = useState({ ...current });
-  const n =
-    (k: keyof FormulaConfig) => (e: React.ChangeEvent<HTMLInputElement>) =>
-      setF((prev) => ({ ...prev, [k]: parseFloat(e.target.value) || 0 }));
-
-  const cum1 = (f.b2 - f.b1) * f.r1;
-  const cum2 = cum1 + (f.b3 - f.b2) * f.r2;
-
-  const reset = () => setF({ ...DEFAULT_FORMULA });
-
-  return (
-    <ModalPortal>
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-900/60 backdrop-blur-sm p-4">
-        <div className="bg-white dark:bg-ink-800 rounded-xl shadow-2xl w-full max-w-lg">
-          <div className="flex items-center justify-between px-5 py-4 border-b border-ink-100 dark:border-ink-700">
-            <div>
-              <h3 className="font-bold text-[15px] text-ink-900 dark:text-white flex items-center gap-2">
-                <Settings2 className="w-4 h-4 text-ink-400" /> PAYE Formula
-                Settings
-              </h3>
-              <p className="text-[12px] text-ink-500">
-                Configure Rwanda income tax progressive brackets
-              </p>
-            </div>
-            <button className="icon-btn" onClick={onClose}>
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-
-          <div className="p-5 space-y-5">
-            {/* Brackets table */}
-            <div className="rounded-lg border border-ink-100 dark:border-ink-700 overflow-hidden">
-              <table className="w-full text-[12.5px]">
-                <thead>
-                  <tr className="bg-ink-50 dark:bg-ink-700/30 text-[10px] font-bold text-ink-400 uppercase tracking-wider">
-                    <th className="px-3 py-2 text-left">Bracket</th>
-                    <th className="px-3 py-2 text-right">Ceiling (RWF)</th>
-                    <th className="px-3 py-2 text-right">Rate (%)</th>
-                    <th className="px-3 py-2 text-right">
-                      Cumulative tax at ceiling
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-ink-100 dark:divide-ink-700">
-                  {/* Bracket 1 — 0% */}
-                  <tr className="bg-white dark:bg-ink-800">
-                    <td className="px-3 py-2.5 text-ink-600 dark:text-ink-300">
-                      0 → B1
-                    </td>
-                    <td className="px-3 py-2.5 text-right">
-                      <input
-                        type="number"
-                        min="0"
-                        step="1000"
-                        className="input py-1 text-[12px] text-right w-32"
-                        value={f.b1}
-                        onChange={n("b1")}
-                      />
-                    </td>
-                    <td className="px-3 py-2.5 text-right text-ink-400">0%</td>
-                    <td className="px-3 py-2.5 text-right text-ink-400 tabular-nums">
-                      0
-                    </td>
-                  </tr>
-
-                  {/* Bracket 2 */}
-                  <tr className="bg-white dark:bg-ink-800">
-                    <td className="px-3 py-2.5 text-ink-600 dark:text-ink-300">
-                      B1 → B2
-                    </td>
-                    <td className="px-3 py-2.5 text-right">
-                      <input
-                        type="number"
-                        min="0"
-                        step="1000"
-                        className="input py-1 text-[12px] text-right w-32"
-                        value={f.b2}
-                        onChange={n("b2")}
-                      />
-                    </td>
-                    <td className="px-3 py-2.5 text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <input
-                          type="number"
-                          min="0"
-                          max="100"
-                          step="1"
-                          className="input py-1 text-[12px] text-right w-16"
-                          value={(f.r1 * 100).toFixed(0)}
-                          onChange={(e) =>
-                            setF((prev) => ({
-                              ...prev,
-                              r1: (parseFloat(e.target.value) || 0) / 100,
-                            }))
-                          }
-                        />
-                        <span className="text-ink-400">%</span>
-                      </div>
-                    </td>
-                    <td className="px-3 py-2.5 text-right text-ink-500 tabular-nums">
-                      {fmt(cum1, 0)}
-                    </td>
-                  </tr>
-
-                  {/* Bracket 3 */}
-                  <tr className="bg-white dark:bg-ink-800">
-                    <td className="px-3 py-2.5 text-ink-600 dark:text-ink-300">
-                      B2 → B3
-                    </td>
-                    <td className="px-3 py-2.5 text-right">
-                      <input
-                        type="number"
-                        min="0"
-                        step="1000"
-                        className="input py-1 text-[12px] text-right w-32"
-                        value={f.b3}
-                        onChange={n("b3")}
-                      />
-                    </td>
-                    <td className="px-3 py-2.5 text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <input
-                          type="number"
-                          min="0"
-                          max="100"
-                          step="1"
-                          className="input py-1 text-[12px] text-right w-16"
-                          value={(f.r2 * 100).toFixed(0)}
-                          onChange={(e) =>
-                            setF((prev) => ({
-                              ...prev,
-                              r2: (parseFloat(e.target.value) || 0) / 100,
-                            }))
-                          }
-                        />
-                        <span className="text-ink-400">%</span>
-                      </div>
-                    </td>
-                    <td className="px-3 py-2.5 text-right text-ink-500 tabular-nums">
-                      {fmt(cum2, 0)}
-                    </td>
-                  </tr>
-
-                  {/* Bracket 4+ */}
-                  <tr className="bg-white dark:bg-ink-800">
-                    <td className="px-3 py-2.5 text-ink-600 dark:text-ink-300">
-                      B3 → ∞
-                    </td>
-                    <td className="px-3 py-2.5 text-right text-ink-400 text-[11px]">
-                      No limit
-                    </td>
-                    <td className="px-3 py-2.5 text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <input
-                          type="number"
-                          min="0"
-                          max="100"
-                          step="1"
-                          className="input py-1 text-[12px] text-right w-16"
-                          value={(f.r3 * 100).toFixed(0)}
-                          onChange={(e) =>
-                            setF((prev) => ({
-                              ...prev,
-                              r3: (parseFloat(e.target.value) || 0) / 100,
-                            }))
-                          }
-                        />
-                        <span className="text-ink-400">%</span>
-                      </div>
-                    </td>
-                    <td className="px-3 py-2.5 text-right text-ink-400 text-[11px]">
-                      —
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-
-            {/* Live preview */}
-            <div>
-              <p className="text-[10px] font-bold text-ink-400 uppercase tracking-wider mb-2">
-                Live preview
-              </p>
-              <div className="font-mono text-[11px] bg-ink-50 dark:bg-ink-700/20 rounded-lg p-3 space-y-1 text-ink-600 dark:text-ink-300">
-                <p>IF(Gross ≤ {fmt(f.b1)}) → PAYE = 0</p>
-                <p>
-                  IF(Gross ≤ {fmt(f.b2)}) → PAYE = (Gross – {fmt(f.b1)}) ×{" "}
-                  {(f.r1 * 100).toFixed(0)}%
-                </p>
-                <p>
-                  IF(Gross ≤ {fmt(f.b3)}) → PAYE = {fmt(cum1, 0)} + (Gross –{" "}
-                  {fmt(f.b2)}) × {(f.r2 * 100).toFixed(0)}%
-                </p>
-                <p>
-                  IF(Gross &gt; {fmt(f.b3)}) → PAYE = {fmt(cum2, 0)} + (Gross –{" "}
-                  {fmt(f.b3)}) × {(f.r3 * 100).toFixed(0)}%
-                </p>
-              </div>
-
-              {/* Sample calculations */}
-              <div className="mt-3 grid grid-cols-3 gap-2">
-                {[100_000, 341_834, 1_000_000].map((g) => (
-                  <div
-                    key={g}
-                    className="rounded bg-ink-50 dark:bg-ink-700/20 px-3 py-2 text-center"
-                  >
-                    <div className="text-[10px] text-ink-400">
-                      Gross {fmt(g)}
-                    </div>
-                    <div className="font-bold text-[13px] text-ink-800 dark:text-ink-200 tabular-nums">
-                      PAYE {fmt(Math.round(calcPaye(g, f)))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          <div className="flex justify-between gap-2 px-5 py-4 border-t border-ink-100 dark:border-ink-700">
-            <button className="btn-ghost btn-sm text-ink-500" onClick={reset}>
-              Reset to defaults
-            </button>
-            <div className="flex gap-2">
-              <button className="btn-secondary" onClick={onClose}>
-                Cancel
-              </button>
-              <button className="btn-primary" onClick={() => onSave(f)}>
-                Apply formula
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </ModalPortal>
-  );
-}
 
 /* ══════════════════════════════════════════════════════════════════════
    STAFF DETAILS DRAWER
@@ -1543,7 +1363,7 @@ function StaffDrawer({
                     />
                     <PayrollSummaryRow
                       icon={<TrendingDown className="w-3.5 h-3.5" />}
-                      label="PAYE (formula)"
+                      label="PAYE (calculated)"
                       value={`–${fmt(Math.round(c.payeFormula))}`}
                       accent="text-red-600 dark:text-red-400"
                     />

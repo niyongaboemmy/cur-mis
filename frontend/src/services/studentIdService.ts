@@ -46,6 +46,7 @@ export interface StudentIdRosterFilters {
   per_page?:  number
   keyword?:   string
   state?:     string
+  year?:      number
   campus?:    string
   option_id?: number
 }

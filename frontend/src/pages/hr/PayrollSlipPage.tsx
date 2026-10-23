@@ -10,13 +10,18 @@ import {
   Pencil,
   Trash2,
   X,
-  Calculator,
 } from "lucide-react";
-import { hrService, type PayrollEntry } from "@/services/hrService";
+import {
+  hrService,
+  type PayrollEntry,
+  type PayrollRules,
+} from "@/services/hrService";
+import { computePayroll, responsibilityAmount } from "@/utils/payrollCalc";
 import type { HrEmployee } from "@/types/academic";
 import { PERMISSIONS } from "@/constants";
 import { usePermission } from "@/utils/permissions";
 import ModalPortal from "@/components/ui/ModalPortal";
+import ResponsibilityRolesInput from "@/components/hr/ResponsibilityRolesInput";
 
 /* ── helpers ─────────────────────────────────────────────────────────── */
 
@@ -102,7 +107,15 @@ export default function PayrollSlipPage() {
     enabled: empId > 0,
   });
 
-  const employee: HrEmployee | undefined = data?.data?.employee;
+  const employee: (HrEmployee & { responsibility_role?: string | null; insurance_type?: string | null; insurance_premium?: number | null }) | undefined =
+    data?.data?.employee;
+
+  const { data: rulesRes } = useQuery({
+    queryKey: ["hr-payroll-rules"],
+    queryFn: ({ signal }) => hrService.getPayrollRules(signal),
+    staleTime: 5 * 60 * 1000,
+  });
+  const rules = rulesRes?.data;
   const slips: PayrollEntry[] = data?.data?.slips ?? [];
 
   /* totals */
@@ -594,10 +607,14 @@ export default function PayrollSlipPage() {
       </div>
 
       {/* Edit modal */}
-      {editing && (
+      {editing && rules && (
         <PayrollEntryModal
           empId={empId}
           entry={editing}
+          defaultRole={employee?.responsibility_role ?? null}
+          defaultInsurance={employee?.insurance_type ?? null}
+          defaultPremium={Number(employee?.insurance_premium ?? 0)}
+          rules={rules}
           onClose={() => setEditing(null)}
         />
       )}
@@ -609,28 +626,31 @@ export default function PayrollSlipPage() {
 function PayrollEntryModal({
   empId,
   entry,
+  defaultRole,
+  defaultInsurance,
+  defaultPremium,
+  rules,
   onClose,
 }: {
   empId: number;
   entry?: PayrollEntry;
+  defaultRole: string | null;
+  defaultInsurance: string | null;
+  defaultPremium: number;
+  rules: PayrollRules;
   onClose: () => void;
 }) {
   const qc = useQueryClient();
 
-  const [form, setForm] = useState<PayrollEntry>({
-    emp_id: empId,
+  // Only the procedure inputs are entered. Every amount is calculated.
+  const [form, setForm] = useState({
     period_year: entry?.period_year ?? CUR_Y,
     period_month: entry?.period_month ?? CUR_M,
     basic_salary: Number(entry?.basic_salary ?? 0),
-    housing_allowance: Number(entry?.housing_allowance ?? 0),
-    transport_allowance: Number(entry?.transport_allowance ?? 0),
-    other_allowances: Number(entry?.other_allowances ?? 0),
-    gross_salary: Number(entry?.gross_salary ?? 0),
-    paye: Number(entry?.paye ?? 0),
-    rssb: Number(entry?.rssb ?? 0),
-    cbhi: Number(entry?.cbhi ?? 0),
-    net_salary: Number(entry?.net_salary ?? 0),
-    notes: entry?.notes ?? "",
+    responsibility_role: defaultRole ?? "",
+    insurance: (defaultInsurance === "OTHER" ? "OTHER" : "RAMA") as "RAMA" | "OTHER",
+    insurancePremium: defaultPremium,
+    arrears: Number(entry?.arrears ?? 0),
   });
 
   // Live deductions for the selected period
@@ -644,33 +664,38 @@ function PayrollEntryModal({
     queryFn: ({ signal }) =>
       hrService.activeEmployeeDeductions(
         empId,
-        form.period_year!,
-        form.period_month!,
+        form.period_year,
+        form.period_month,
         signal,
       ),
     staleTime: 30_000,
   });
   const activeDeds = dedRes?.data?.deductions ?? [];
-  const otherDedTotal =
-    dedRes?.data?.total ?? Number(entry?.other_deductions ?? 0);
+  const otherDedTotal = dedRes?.data?.total ?? 0;
 
-  const gross =
-    form.basic_salary +
-    form.housing_allowance +
-    form.transport_allowance +
-    form.other_allowances;
-  const net = Math.max(
-    0,
-    gross - form.paye - form.rssb - form.cbhi - otherDedTotal,
+  const calc = computePayroll(
+    {
+      basicSalary: form.basic_salary,
+      responsibilityAmount: responsibilityAmount(rules, form.responsibility_role || null),
+      arrears: form.arrears,
+      otherDeductions: otherDedTotal,
+      insurance: form.insurance,
+      insurancePremium: form.insurancePremium,
+    },
+    rules,
   );
-
   const save = useMutation({
     mutationFn: () =>
       hrService.payrollUpsert({
-        ...form,
-        gross_salary: gross,
+        emp_id: empId,
+        period_year: form.period_year,
+        period_month: form.period_month,
+        basic_salary: form.basic_salary,
+        responsibility_role: form.responsibility_role || null,
+        insurance_type: form.insurance,
+        insurance_premium: form.insurancePremium,
+        arrears: form.arrears,
         other_deductions: otherDedTotal,
-        net_salary: net,
       }),
     onSuccess: () => {
       toast.success(entry ? "Entry updated." : "Entry added.");
@@ -681,10 +706,6 @@ function PayrollEntryModal({
     onError: (e: any) =>
       toast.error(e?.response?.data?.message ?? "Save failed"),
   });
-
-  const n =
-    (field: keyof PayrollEntry) => (e: React.ChangeEvent<HTMLInputElement>) =>
-      setForm((f) => ({ ...f, [field]: parseFloat(e.target.value) || 0 }));
 
   return (
     <ModalPortal>
@@ -699,7 +720,7 @@ function PayrollEntryModal({
             </button>
           </div>
 
-          <div className="p-5 space-y-4 max-h-[70vh] overflow-y-auto">
+          <div className="p-5 space-y-5 max-h-[70vh] overflow-y-auto">
             {/* Period */}
             <div className="grid grid-cols-2 gap-3">
               <Field label="Month">
@@ -707,10 +728,7 @@ function PayrollEntryModal({
                   className="input text-[13px]"
                   value={form.period_month}
                   onChange={(e) =>
-                    setForm((f) => ({
-                      ...f,
-                      period_month: parseInt(e.target.value),
-                    }))
+                    setForm((f) => ({ ...f, period_month: parseInt(e.target.value) }))
                   }
                 >
                   {monthOptions.map((o) => (
@@ -725,10 +743,7 @@ function PayrollEntryModal({
                   className="input text-[13px]"
                   value={form.period_year}
                   onChange={(e) =>
-                    setForm((f) => ({
-                      ...f,
-                      period_year: parseInt(e.target.value),
-                    }))
+                    setForm((f) => ({ ...f, period_year: parseInt(e.target.value) }))
                   }
                 >
                   {yearOptions.map((o) => (
@@ -740,106 +755,126 @@ function PayrollEntryModal({
               </Field>
             </div>
 
-            <hr className="border-ink-100 dark:border-ink-700" />
-            <p className="text-[11px] font-bold text-ink-400 uppercase tracking-wider">
-              Salary components
-            </p>
-
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Basic Salary">
-                <NumInput
-                  value={form.basic_salary}
-                  onChange={n("basic_salary")}
-                />
-              </Field>
-              <Field label="Housing Allowance">
-                <NumInput
-                  value={form.housing_allowance}
-                  onChange={n("housing_allowance")}
-                />
-              </Field>
-              <Field label="Transport Allowance">
-                <NumInput
-                  value={form.transport_allowance}
-                  onChange={n("transport_allowance")}
-                />
-              </Field>
-              <Field label="Other Allowances">
-                <NumInput
-                  value={form.other_allowances}
-                  onChange={n("other_allowances")}
-                />
-              </Field>
-            </div>
-
-            <div className="rounded-lg bg-ink-50 dark:bg-ink-700/30 px-4 py-2.5 flex items-center justify-between">
-              <span className="text-[12px] font-semibold text-ink-600 dark:text-ink-300 flex items-center gap-1.5">
-                <Calculator className="w-3.5 h-3.5" /> Gross Salary
-              </span>
-              <span className="text-[14px] font-bold text-ink-900 dark:text-white tabular-nums">
-                {gross.toLocaleString("en-US")}
-              </span>
-            </div>
-
-            <hr className="border-ink-100 dark:border-ink-700" />
-            <p className="text-[11px] font-bold text-ink-400 uppercase tracking-wider">
-              Deductions
-            </p>
-
-            <div className="grid grid-cols-3 gap-3">
-              <Field label="PAYE (TPR)">
-                <NumInput value={form.paye} onChange={n("paye")} />
-              </Field>
-              <Field label="RSSB">
-                <NumInput value={form.rssb} onChange={n("rssb")} />
-              </Field>
-              <Field label="CBHI">
-                <NumInput value={form.cbhi} onChange={n("cbhi")} />
-              </Field>
-            </div>
-
-            {activeDeds.length > 0 && (
-              <div className="rounded-lg border border-violet-100 dark:border-violet-800 overflow-hidden">
-                <div className="px-3 py-1.5 bg-violet-50 dark:bg-violet-900/20 text-[10px] font-bold text-violet-500 uppercase tracking-wider">
-                  Employee deductions
-                </div>
-                {activeDeds.map((d) => (
-                  <div
-                    key={d.id}
-                    className="flex items-center justify-between px-3 py-2 border-t border-violet-100 dark:border-violet-800"
-                  >
-                    <span className="text-[12px] text-ink-600 dark:text-ink-300">
-                      {d.label}{" "}
-                      <span className="text-[10px] text-ink-400">
-                        ({d.deduction_type})
-                      </span>
-                    </span>
-                    <span className="text-[12px] font-semibold text-violet-700 dark:text-violet-300 tabular-nums">
-                      –{Number(d.monthly_amount).toLocaleString("en-US")}
-                    </span>
-                  </div>
-                ))}
+            {/* Salary components */}
+            <Section title="Salary Components">
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Basic Salary">
+                  <NumInput
+                    value={form.basic_salary}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, basic_salary: parseFloat(e.target.value) || 0 }))
+                    }
+                  />
+                </Field>
+                <CalcField label="Housing Allowance" value={calc.housing_allowance} />
               </div>
-            )}
+              <div className="grid grid-cols-2 gap-3">
+                <CalcField label="Transport Allowance" value={calc.transport_allowance} />
+                <CalcField
+                  label="Other Allowances"
+                  value={calc.responsibility_allowance + calc.arrears}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Arrears (if any)">
+                  <NumInput
+                    value={form.arrears}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, arrears: parseFloat(e.target.value) || 0 }))
+                    }
+                  />
+                </Field>
+                <Field label="Responsibility Allowance">
+                  <ResponsibilityRolesInput
+                    value={form.responsibility_role}
+                    onChange={(value) =>
+                      setForm((f) => ({ ...f, responsibility_role: value }))
+                    }
+                    roles={rules.responsibility_roles}
+                  />
+                </Field>
+                <Field label="Health Insurance">
+                  <select
+                    className="input text-[13px]"
+                    value={form.insurance}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, insurance: e.target.value as "RAMA" | "OTHER" }))
+                    }
+                  >
+                    <option value="RAMA">RAMA</option>
+                    <option value="OTHER">Other insurer (e.g. RADIANT) — no RAMA</option>
+                  </select>
+                </Field>
+                {form.insurance === "OTHER" && (
+                  <Field label="RADIANT premium (RWF / month)">
+                    <NumInput
+                      value={form.insurancePremium}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, insurancePremium: parseFloat(e.target.value) || 0 }))
+                      }
+                    />
+                  </Field>
+                )}
+              </div>
+              <TotalBar label="Gross Salary" value={calc.gross} />
+            </Section>
 
-            <div className="rounded-lg bg-emerald-50 dark:bg-emerald-500/10 px-4 py-2.5 flex items-center justify-between">
-              <span className="text-[12px] font-semibold text-emerald-700 dark:text-emerald-300">
-                Net Salary
-              </span>
-              <span className="text-[14px] font-bold text-emerald-800 dark:text-emerald-200 tabular-nums">
-                {net.toLocaleString("en-US")}
-              </span>
-            </div>
+            {/* Deductions */}
+            <Section title="Deductions">
+              <div className="grid grid-cols-2 gap-3">
+                <CalcField
+                  label="PAYE (TPR)"
+                  value={calc.paye}
+                  tone="text-red-600 dark:text-red-400"
+                />
+                <CalcField
+                  label="RSSB"
+                  value={calc.rssb_employee_total}
+                  tone="text-orange-600 dark:text-orange-400"
+                />
+                <CalcField
+                  label="RAMA"
+                  value={calc.rama_employee}
+                  tone="text-orange-600 dark:text-orange-400"
+                />
+                <CalcField
+                  label="CBHI"
+                  value={calc.cbhi}
+                  tone="text-sky-600 dark:text-sky-400"
+                />
+              </div>
 
-            <Field label="Notes (optional)">
-              <input
-                className="input text-[13px]"
-                value={form.notes ?? ""}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, notes: e.target.value }))
-                }
+              {activeDeds.length > 0 && (
+                <div className="rounded-lg border border-ink-100 dark:border-ink-700 overflow-hidden">
+                  <div className="px-4 py-2 bg-violet-50 dark:bg-violet-500/10 text-[10px] font-bold text-violet-700 dark:text-violet-300 uppercase tracking-wider">
+                    Employee deductions
+                  </div>
+                  <div className="divide-y divide-ink-100 dark:divide-ink-700">
+                    {activeDeds.map((d) => (
+                      <div key={d.id} className="flex items-center justify-between px-4 py-2">
+                        <span className="text-[12px] text-ink-600 dark:text-ink-400">
+                          {d.label}{" "}
+                          <span className="text-[10px] text-ink-400">({d.deduction_type})</span>
+                        </span>
+                        <span className="text-[13px] font-semibold tabular-nums text-violet-700 dark:text-violet-300">
+                          −{Number(d.monthly_amount).toLocaleString("en-US")}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <TotalBar
+                label="Net Salary"
+                value={calc.net_pay}
+                tone="emerald"
               />
-            </Field>
+            </Section>
+
+            <p className="text-[11px] text-ink-400 dark:text-ink-500 bg-ink-50 dark:bg-ink-700/20 rounded px-3 py-2">
+              Amounts are recalculated by the server when you save.
+            </p>
           </div>
 
           <div className="flex justify-end gap-2 px-5 py-4 border-t border-ink-100 dark:border-ink-700">
@@ -849,7 +884,7 @@ function PayrollEntryModal({
             <button
               className="btn-primary"
               onClick={() => save.mutate()}
-              disabled={save.isPending}
+              disabled={save.isPending || form.basic_salary <= 0}
             >
               {save.isPending && (
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -877,6 +912,74 @@ function Field({
         {label}
       </label>
       {children}
+    </div>
+  );
+}
+
+function Section({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="space-y-3">
+      <p className="text-[11px] font-bold text-ink-400 uppercase tracking-wider">
+        {title}
+      </p>
+      {children}
+    </div>
+  );
+}
+
+/* Read-only figure the server recalculates on save. */
+function CalcField({
+  label,
+  value,
+  tone = "text-ink-800 dark:text-ink-100",
+}: {
+  label: string;
+  value: number;
+  tone?: string;
+}) {
+  return (
+    <div className="space-y-1">
+      <span className="block text-[10px] font-bold text-ink-500 uppercase tracking-wider">
+        {label}
+      </span>
+      <div className="input text-[13px] text-right tabular-nums bg-ink-50 dark:bg-ink-700/30 cursor-default select-none">
+        <span className={`font-semibold ${tone}`}>
+          {value.toLocaleString("en-US", { maximumFractionDigits: 2 })}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function TotalBar({
+  label,
+  value,
+  tone = "gray",
+}: {
+  label: string;
+  value: number;
+  tone?: "gray" | "emerald";
+}) {
+  const box =
+    tone === "emerald"
+      ? "bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/30"
+      : "bg-ink-50 dark:bg-ink-700/30 border-ink-100 dark:border-ink-700";
+  const text =
+    tone === "emerald"
+      ? "text-emerald-700 dark:text-emerald-300"
+      : "text-ink-800 dark:text-white";
+  return (
+    <div className={`flex items-center justify-between rounded-lg border px-4 py-2.5 ${box}`}>
+      <span className={`text-[12px] font-semibold ${text}`}>{label}</span>
+      <span className={`text-[14px] font-bold tabular-nums ${text}`}>
+        {value.toLocaleString("en-US", { maximumFractionDigits: 2 })}
+      </span>
     </div>
   );
 }

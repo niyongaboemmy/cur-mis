@@ -33,26 +33,41 @@ class AnnouncementModel extends BaseModel
     public const AUDIENCES  = ['all', 'students', 'staff', 'faculty', 'admin'];
     public const PRIORITIES = ['normal', 'urgent'];
 
+    /** Role name → audiences whose announcements that role can see. */
+    public const ROLE_AUDIENCES = [
+        'student'         => ['all', 'students'],
+        'applicant'       => ['all'],
+        'lecturer'        => ['all', 'staff', 'faculty'],
+        'hod'             => ['all', 'staff', 'faculty'],
+        'registrar'       => ['all', 'staff', 'admin'],
+        'hr_manager'      => ['all', 'staff'],
+        'finance_officer' => ['all', 'staff'],
+        'gate'            => ['all', 'staff'],
+        'admin'           => ['all', 'staff', 'faculty', 'admin', 'students'],
+        'superadmin'      => self::AUDIENCES,
+    ];
+
     /**
      * Map a role name to the set of announcement audiences it should see.
      * 'all' is always included.
      */
     public static function audiencesForRole(string $role): array
     {
-        $map = [
-            'student'         => ['all', 'students'],
-            'applicant'       => ['all'],
-            'lecturer'        => ['all', 'staff', 'faculty'],
-            'hod'             => ['all', 'staff', 'faculty'],
-            'registrar'       => ['all', 'staff', 'admin'],
-            'hr_manager'      => ['all', 'staff'],
-            'finance_officer' => ['all', 'staff'],
-            'gate'            => ['all', 'staff'],
-            'admin'           => ['all', 'staff', 'faculty', 'admin', 'students'],
-            'superadmin'      => self::AUDIENCES,
-        ];
+        return self::ROLE_AUDIENCES[strtolower($role)] ?? ['all'];
+    }
 
-        return $map[strtolower($role)] ?? ['all'];
+    /**
+     * The role names that can see announcements aimed at $audience. Used to
+     * notify exactly the people the announcement is visible to.
+     *
+     * @return string[]
+     */
+    public static function rolesForAudience(string $audience): array
+    {
+        return array_keys(array_filter(
+            self::ROLE_AUDIENCES,
+            static fn(array $audiences): bool => in_array($audience, $audiences, true)
+        ));
     }
 
     /**

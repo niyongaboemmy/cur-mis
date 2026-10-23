@@ -9,6 +9,7 @@ import { PERMISSIONS, LEAVE_STAGE_PERMISSIONS } from "@/constants/permissions";
 // ── Pages (direct imports — no lazy() to avoid chunk-load failures on cPanel) ──
 import WelcomePage from "@/pages/WelcomePage";
 import HomePage from "@/pages/HomePage";
+import RootRoute from "@/components/layout/RootRoute";
 import AdminDashboardPage from "@/pages/admin/AdminDashboardPage";
 import LoginPage from "@/pages/LoginPage";
 import RegisterPage from "@/pages/RegisterPage";
@@ -19,6 +20,9 @@ import RolesManagementPage from "@/pages/admin/RolesManagementPage";
 import ServiceCatalogManagementPage from "@/pages/admin/ServiceCatalogManagementPage";
 import PermissionsManagementPage from "@/pages/admin/PermissionsManagementPage";
 import UsersManagementPage from "@/pages/admin/UsersManagementPage";
+import AcademicScopePage from "@/pages/admin/AcademicScopePage";
+import LecturerPlacementPage from "@/pages/admin/LecturerPlacementPage";
+import MyStudentsPage from "@/pages/teaching/MyStudentsPage";
 // University Modules
 import StudentsPage from "@/pages/StudentsPage";
 import StudentDetailsPage from "@/pages/StudentDetailsPage";
@@ -27,7 +31,7 @@ import DocumentGenerationPage from "@/pages/DocumentGenerationPage";
 import AttendancePage from "@/pages/AttendancePage";
 
 // HR Management
-import AllStaffList from "@/pages/hr/AllStaffList";
+import StaffListPage from "@/pages/hr/StaffListPage";
 import StaffDetailPage from "@/pages/hr/StaffDetailPage";
 import HrAttendancePage from "@/pages/hr/HrAttendancePage";
 import HrDocumentsPage from "@/pages/hr/HrDocumentsPage";
@@ -37,13 +41,14 @@ import MyPayrollPage from "@/pages/hr/MyPayrollPage";
 import PaymentsPage from "@/pages/hr/PaymentsPage";
 import HrSettingsPage from "@/pages/hr/HrSettingsPage";
 import LeavePage from "@/pages/hr/LeavePage";
-import MyLeavePage from "@/pages/hr/MyLeavePage";
 import LeaveApprovalQueuePage from "@/pages/hr/LeaveApprovalQueuePage";
 import NotificationsPage from "@/pages/NotificationsPage";
 import AppraisalPage from "@/pages/hr/AppraisalPage";
 import HRImportExportPage from "@/pages/hr/HRImportExportPage";
 import SupervisorLeaveApprovalDashboard from "@/pages/hr/SupervisorLeaveApprovalDashboard";
 import PayrollManagementPage from "@/pages/hr/PayrollManagementPage";
+import PayrollPhpPage from "@/pages/hr/PayrollPhpPage";
+import LeavePhpPage from "@/pages/hr/LeavePhpPage";
 import ContractManagementPage from "@/pages/hr/ContractManagementPage";
 import HrMonitoringDashboard from "@/pages/hr/HrMonitoringDashboard";
 import PerformanceMonitoringPage from "@/pages/hr/PerformanceMonitoringPage";
@@ -201,7 +206,7 @@ function App() {
           <Route element={<ProtectedRoute />}>
             <Route element={<MainLayout />}>
               {/* Free to all authenticated users */}
-              <Route path="/" element={<WelcomePage />} />
+              <Route path="/" element={<RootRoute />} />
               <Route path="/welcome" element={<WelcomePage />} />
               <Route
                 element={
@@ -213,6 +218,8 @@ function App() {
                 <Route path="/dashboard" element={<AdminDashboardPage />} />
               </Route>
               <Route path="/home" element={<HomePage />} />
+              <Route path="/lecturers" element={<LecturerPlacementPage />} />
+              <Route path="/my-students" element={<MyStudentsPage />} />
               <Route path="/profile" element={<UserProfilePage />} />
               <Route path="/my/service-requests" element={<MyServiceRequestsPage />} />
 
@@ -324,6 +331,7 @@ function App() {
                 }
               >
                 <Route path="/users" element={<UsersManagementPage />} />
+                <Route path="/academic-scope" element={<AcademicScopePage />} />
               </Route>
 
               {/* ── Students ── */}
@@ -376,7 +384,7 @@ function App() {
                   />
                 }
               >
-                <Route path="/hr/staff" element={<AllStaffList />} />
+                <Route path="/hr/staff" element={<StaffListPage />} />
                 <Route path="/hr/staff/:id" element={<StaffDetailPage />} />
                 <Route path="/hr/attendance" element={<HrAttendancePage />} />
                 <Route path="/hr/documents" element={<HrDocumentsPage />} />
@@ -424,6 +432,7 @@ function App() {
                 <Route path="/hr/payroll/:id" element={<PayrollSlipPage />} />
                 <Route path="/hr/payroll-management" element={<PayrollManagementPage />} />
                 <Route path="/hr/payments" element={<PaymentsPage />} />
+                <Route path="/hr/payroll-system" element={<PayrollPhpPage />} />
               </Route>
 
               {/* ── Leave management — any HR viewer OR leave view/approve role ── */}
@@ -439,6 +448,7 @@ function App() {
                 }
               >
                 <Route path="/hr/leave" element={<LeavePage />} />
+                <Route path="/hr/leave-system" element={<LeavePhpPage />} />
               </Route>
 
               {/* ── Leave approvals — the reviewer's own stage queue. Gated on
@@ -482,16 +492,8 @@ function App() {
                   the only gate; no permission grants access to anyone else's. ── */}
               <Route path="/notifications" element={<NotificationsPage />} />
 
-              {/* ── Staff self-service: leave ── */}
-              <Route
-                element={
-                  <ProtectedRoute
-                    requiredPermissions={PERMISSIONS.REQUEST_LEAVE}
-                  />
-                }
-              >
-                <Route path="/me/leave" element={<MyLeavePage />} />
-              </Route>
+              {/* ── Staff self-service: leave — same PHP leave app as HR → Leave ── */}
+              <Route path="/me/leave" element={<LeavePhpPage />} />
 
               {/* ── Teacher (lecturer) self-service portal ──
                   Gated on ACCESS_TEACHER_PORTAL, NOT VIEW_MY_MODULES — the

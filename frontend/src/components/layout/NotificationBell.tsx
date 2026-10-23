@@ -18,6 +18,9 @@ import {
   type NotificationSeverity,
 } from '@/services/notificationService'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
+import DeviceAlertsToggle from '@/components/layout/DeviceAlertsToggle'
+import { setAppBadge } from '@/pwa/appBadge'
+import toast from 'react-hot-toast'
 import { cn } from '@/utils/helpers'
 
 function timeAgo(iso: string): string {
@@ -79,6 +82,19 @@ export default function NotificationBell() {
 
   const total = data?.total ?? 0
   const recent = data?.recent ?? []
+
+  // Keep the installed app's icon badge in step with the count, and tell the
+  // user in-app when something new has arrived (not on the first load).
+  const prevTotal = useRef<number | null>(null)
+  useEffect(() => {
+    if (!data) return
+    setAppBadge(total)
+    if (prevTotal.current !== null && total > prevTotal.current) {
+      const diff = total - prevTotal.current
+      toast(`${diff} new notification${diff === 1 ? '' : 's'}`)
+    }
+    prevTotal.current = total
+  }, [data, total])
 
   const refresh = useCallback(() => {
     qc.invalidateQueries({ queryKey: ['notifications'] })
@@ -239,6 +255,7 @@ export default function NotificationBell() {
 
             {/* Footer */}
             <div className="px-4 py-3 border-t border-ink-100 dark:border-ink-700 bg-ink-50/50 dark:bg-ink-900/30">
+              <DeviceAlertsToggle />
               <button
                 onClick={() => { close(); navigate('/notifications') }}
                 className="block w-full text-center text-sm font-medium text-primary-600 dark:text-primary-400 hover:text-primary-800 dark:hover:text-primary-300 transition-colors"

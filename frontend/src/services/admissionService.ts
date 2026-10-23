@@ -285,6 +285,9 @@ export const applicationAdminService = {
   acceptOfferByAppId: (id: number) =>
     api.post<{ offer_id: number }>(`/admin/applications/${id}/accept-offer`),
 
+  update: (id: number, data: Partial<StudentApplication>) =>
+    api.post<StudentApplication>(`/admin/applications/${id}`, data),
+
   paymentSlipUrl: (id: number) => {
     const token = useAuthStore.getState().token;
     const base = (import.meta.env.VITE_API_URL ?? "") + "/api";
@@ -608,6 +611,8 @@ export interface AdmissionBillingOverview {
   is_billed:            boolean
   fully_paid:           boolean
   merchant_code:        string
+  /** Kigali Campus merchant code from api_authorization; null when none is configured. */
+  kigali_merchant_code: string | null
   payer_code:           string
   checkout_url:         string | null
   offer_status:         string | null

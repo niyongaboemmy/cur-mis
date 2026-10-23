@@ -112,15 +112,8 @@ final class LecturerScope
         }
         $ids = array_map(static fn ($r) => (int)$r['module_id'], $db->fetchAll($sql, $args));
 
-        // Also count the timetable. Academics -> Scheduling assigns an instructor
-        // by writing `module_offerings.instructor_id` and never creates a
-        // `module_assignments` row, so a lecturer scheduled to teach a module was
-        // invisible to the whole portal until someone separately created an
-        // assignment. Same namespaced id space, so the same candidates apply.
-        foreach (self::offeringModuleIds($db, $userId) as $mid) {
-            $ids[] = $mid;
-        }
-
+        // Only the modules assigned to the lecturer (module_assignments) count. A timetable
+        // teacher entry alone does not make a module the lecturer's, so every screen agrees.
         return array_values(array_unique($ids));
     }
 
@@ -191,10 +184,8 @@ final class LecturerScope
         // module_assignments row (Academics -> Scheduling only writes the
         // timetable). Synthesised so the portal lists them the moment they are
         // scheduled; assignment_id 0 marks the row as timetable-derived.
-        $extra = array_values(array_filter(
-            self::offeringModuleIds($db, $userId),
-            static fn ($mid) => !isset($have[$mid])
-        ));
+        // Timetable-only modules are not added: the admin assignment is the source of truth.
+        $extra = [];
 
         if ($extra !== []) {
             // Offerings carry no term, so attribute them to the current term —

@@ -11,6 +11,7 @@ use App\Models\MessageModel;
 use App\Models\ConversationModel;
 use App\Helpers\ValidationHelper;
 use App\Services\MailService;
+use App\Services\NotificationService;
 use App\Services\SystemLogService;
 use App\Services\AuthService;
 use App\Constants\Permissions;
@@ -353,6 +354,24 @@ class MessageController extends BaseController
 
         // Email dispatch — fire-and-forget after DB commit
         $this->dispatchEmail($msgId, $actor, trim($body['body']), $sendEmail, $recipientIds);
+
+        // Each other participant gets one updating notification for this conversation.
+        try {
+            $sender = $this->db->fetchOne('SELECT full_name FROM users WHERE id = ?', [$authId]);
+            NotificationService::pushDigest(
+                $recipientIds,
+                'message',
+                'conversation',
+                $convId,
+                'New message from ' . ($sender['full_name'] ?? 'a colleague'),
+                trim($body['body']),
+                '/messages',
+                'info',
+                [$authId]
+            );
+        } catch (\Throwable $e) {
+            error_log('[Messages] notifying recipients failed: ' . $e->getMessage());
+        }
 
         SystemLogService::log('CREATE', 'MESSAGING',
             "User {$authId} sent message {$msgId} in conversation {$convId}.",

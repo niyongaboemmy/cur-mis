@@ -40,6 +40,7 @@ import {
   verificationService,
   offerService,
   manualAdmissionService,
+  admissionBillingService,
 } from "@/services/admissionService";
 import { academicsMgmtService } from "@/services/academicsMgmtService";
 import { ApplicationStatus, VerificationStatus } from "@/types/admission";
@@ -261,6 +262,20 @@ export default function ApplicationDetailPage() {
     queryFn: () => verificationService.getPendingApplications(),
   });
   const queue = queueQ.data?.data?.data ?? [];
+
+  // Enrollment is only allowed once the Registration bill is fully paid. The
+  // same cache key as AdmissionFeesPanel, so billing or a payment refreshes both.
+  const billsQ = useQuery({
+    queryKey: ["admission-bills", "admin", appId],
+    queryFn: ({ signal }) => admissionBillingService.list(appId, signal),
+    enabled: !!appId,
+    retry: false,
+  });
+  const registrationBill = (billsQ.data?.data?.bills ?? []).find(
+    (b) => b.fee_type === "REGISTRATION",
+  );
+  const registrationPaid =
+    !!registrationBill && registrationBill.balance <= 0.009;
   const queueIdx = queue.findIndex((a: any) => a.id === appId);
   const prevApp = queueIdx > 0 ? queue[queueIdx - 1] : null;
   const nextApp = queueIdx < queue.length - 1 ? queue[queueIdx + 1] : null;
@@ -1381,8 +1396,9 @@ export default function ApplicationDetailPage() {
                     Finalize Enrollment
                   </h3>
                   <p className="text-ink-500 text-[14px] mb-8 max-w-sm mx-auto">
-                    Fee payment is confirmed. Please review the enrollment
-                    details before generating the official registration number.
+                    {registrationPaid
+                      ? "Registration fee is paid. Please review the enrollment details before generating the official registration number."
+                      : "Review the enrollment details below. The registration number is issued only after the Registration fee is paid."}
                   </p>
 
                   {/* Enrollment Details Summary */}
@@ -1525,7 +1541,25 @@ export default function ApplicationDetailPage() {
                     </div>
                   </div>
 
-                  {status === ApplicationStatus.OFFER_ACCEPTED ? (
+                  {status === ApplicationStatus.OFFER_ACCEPTED && !registrationPaid ? (
+                    <div className="space-y-5 text-left">
+                      <div className="rounded-2xl border-2 border-red-500 bg-red-50 dark:bg-red-950/30 p-5">
+                        <p className="text-[15px] font-black text-red-900 dark:text-red-100 uppercase tracking-tight">
+                          Enrollment is locked until the Registration fee is paid
+                        </p>
+                        <p className="text-[12px] text-red-800 dark:text-red-200 mt-1">
+                          {registrationBill
+                            ? `The Registration fee of ${Number(registrationBill.amount_due).toLocaleString()} RWF is still unpaid.`
+                            : "The Registration fee has not been billed yet. Bill the applicant first, then they pay before enrollment."}
+                        </p>
+                      </div>
+                      <AdmissionFeesPanel
+                        mode="validator"
+                        applicationId={appId}
+                        canManage={canManage}
+                      />
+                    </div>
+                  ) : status === ApplicationStatus.OFFER_ACCEPTED ? (
                     <button
                       className="btn-primary py-3 px-8 text-[14px] flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 shadow-xl shadow-green-500/20 mx-auto"
                       onClick={async () => {

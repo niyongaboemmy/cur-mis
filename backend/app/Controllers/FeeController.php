@@ -125,12 +125,14 @@ class FeeController extends BaseController
         $data   = $request->body();
         $actor  = $request->param('_auth_user');
         $validCategories = ['local', 'international', 'sponsored', 'self_sponsored'];
+        $validProgrammes = ['undergraduate', 'postgraduate', 'masters'];
         $errors = ValidationHelper::validate($data, [
             'academic_year_id' => 'required|numeric',
             'fee_type'         => 'required|in:' . implode(',', $this->getActiveFeeCodes()),
             'label'            => 'required|string|max:120',
             'amount'           => 'required|numeric',
-            'student_category' => 'nullable|in:' . implode(',', $validCategories),
+            'student_category'  => 'nullable|in:' . implode(',', $validCategories),
+            'programme_category' => 'nullable|in:' . implode(',', $validProgrammes),
             'currency'         => 'nullable|string|max:10',
         ]);
         if (!empty($errors)) {
@@ -158,6 +160,8 @@ class FeeController extends BaseController
             'campus_id'         => !empty($data['campus_id']) ? (int)$data['campus_id'] : null,
             'student_category'  => in_array($data['student_category'] ?? '', $validCategories, true)
                                      ? $data['student_category'] : null,
+            'programme_category' => in_array($data['programme_category'] ?? '', $validProgrammes, true)
+                                     ? $data['programme_category'] : null,
             'fee_type'          => $data['fee_type'],
             'label'             => $data['label'],
             'amount'            => (float)$data['amount'],
@@ -194,9 +198,13 @@ class FeeController extends BaseController
 
         $validPlans      = ['full_year', 'per_semester', 'per_installment'];
         $validCategories = ['local', 'international', 'sponsored', 'self_sponsored'];
+        $validProgrammes = ['undergraduate', 'postgraduate', 'masters'];
 
         if (isset($data['student_category']) && $data['student_category'] !== '' && !in_array($data['student_category'], $validCategories, true)) {
             $this->error($response, 'Validation failed.', 422, ['student_category' => ['The student_category field must be one of: ' . implode(', ', $validCategories) . '.']]);
+        }
+        if (isset($data['programme_category']) && $data['programme_category'] !== '' && !in_array($data['programme_category'], $validProgrammes, true)) {
+            $this->error($response, 'Validation failed.', 422, ['programme_category' => ['The programme_category field must be one of: ' . implode(', ', $validProgrammes) . '.']]);
         }
 
         $this->structureModel->update($id, array_filter([
@@ -206,6 +214,7 @@ class FeeController extends BaseController
             'semester'          => isset($data['semester'])  ? (int)$data['semester']    : null,
             'campus_id'         => isset($data['campus_id']) ? ((int)$data['campus_id'] ?: null) : null,
             'student_category'  => isset($data['student_category']) ? ($data['student_category'] ?: null) : null,
+            'programme_category' => isset($data['programme_category']) ? ($data['programme_category'] ?: null) : null,
             'payment_plan'      => isset($data['payment_plan']) && in_array($data['payment_plan'], $validPlans, true)
                                      ? $data['payment_plan'] : null,
             'installment_count' => isset($data['installment_count']) ? ((int)$data['installment_count'] ?: null) : null,
@@ -857,7 +866,9 @@ class FeeController extends BaseController
 
         $offset = ($page - 1) * $perPage;
 
-        $whereClause = "1=1";
+        // Reversals (payment_notifi = 'Credit') are left out of the listing,
+        // its totals, and the Excel export, which all read this endpoint.
+        $whereClause = "COALESCE(LOWER(p.`payment_notifi`), '') <> 'credit'";
         $params = [];
 
         if ($channel !== '') {
@@ -905,7 +916,7 @@ class FeeController extends BaseController
         $data = $this->db->fetchAll($query, $params);
 
         // Fetch basic dashboard metrics for online payments
-        $metricsQuery = "SELECT COUNT(*) as total_tx, SUM(amount) as total_amount FROM `payment`";
+        $metricsQuery = "SELECT COUNT(*) as total_tx, SUM(amount) as total_amount FROM `payment` p WHERE COALESCE(LOWER(p.`payment_notifi`), '') <> 'credit'";
         $metrics = $this->db->fetchOne($metricsQuery);
 
         // Options for the channel / service pickers. Channels come from the
@@ -2580,11 +2591,13 @@ class FeeController extends BaseController
 
         $rows        = $this->structureModel->scheduleExport($yearId);
         $generalFees = $this->structureModel->generalFeeRows($yearId);
+        // Every active structure, so the PDF covers the same set as the Fee Rates page.
+        $register    = $this->structureModel->allActiveForExport($yearId);
         $year        = $this->db->fetchOne("SELECT label FROM academic_years WHERE id = ?", [$yearId]);
         $yearLabel   = $year['label'] ?? 'Academic Year';
 
         // Stream PDF using the helper
-        \App\Helpers\FeeSchedulePdf::streamPdf($rows, $generalFees, ['academic_year' => $yearLabel], "Fee-Schedule-{$yearLabel}.pdf");
+        \App\Helpers\FeeSchedulePdf::streamPdf($rows, $generalFees, ['academic_year' => $yearLabel, 'register' => $register], "Fee-Schedule-{$yearLabel}.pdf");
     }
 
     /**

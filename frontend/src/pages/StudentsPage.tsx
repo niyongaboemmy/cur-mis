@@ -1,6 +1,7 @@
-import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams, Link, useNavigate } from "react-router-dom";
+import toast from "react-hot-toast";
 import {
   Search,
   Loader2,
@@ -15,9 +16,11 @@ import {
   Filter,
   X,
   Eye,
+  Columns3,
   Download,
   Upload,
   FileText,
+  Trash2,
 } from "lucide-react";
 import {
   studentService,
@@ -35,6 +38,10 @@ import DonutChart from "@/components/dashboard/DonutChart";
 import BarChart, { type BarDatum } from "@/components/dashboard/BarChart";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import StudentExportModal from "@/components/admin/StudentExportModal";
+import DistrictEditPopover from "@/components/students/DistrictEditPopover";
+import { displayDistrict } from "@/data/rwandaLocations";
+import { usePermission } from "@/utils/permissions";
+import { PERMISSIONS } from "@/constants/permissions";
 import BulkUploadModal from "@/components/admin/BulkUploadModal";
 import DocumentCompletionBadge, {
   type DocumentStatus,
@@ -53,6 +60,35 @@ const PER_PAGE = 15;
    URL-driven state — card clicks navigate with filter params.
    ───────────────────────────────────────────────────────────── */
 type Tab = "active" | "all";
+
+/** Columns the student table can hide. Keys match the sortable field names. */
+const COLUMN_OPTIONS: { key: string; label: string }[] = [
+  { key: "fname", label: "Student" },
+  { key: "regnumber", label: "Reg / Index" },
+  { key: "email", label: "Contact" },
+  { key: "campus", label: "Campus" },
+  { key: "gender", label: "Gender" },
+  { key: "nationality", label: "Nationality" },
+  { key: "age", label: "Age" },
+  { key: "district", label: "District" },
+  { key: "acc_year", label: "Academic year" },
+  { key: "start_year", label: "Start year" },
+  { key: "end_year", label: "End year" },
+  { key: "learning_mode", label: "Learning mode" },
+  { key: "document_status", label: "Documents" },
+];
+
+const HIDDEN_COLUMNS_KEY = "students.hiddenColumns";
+
+/** Per-browser column choice. Storage can be blocked, so every access is guarded. */
+function readHiddenColumns(): string[] {
+  try {
+    const value = JSON.parse(localStorage.getItem(HIDDEN_COLUMNS_KEY) ?? "[]");
+    return Array.isArray(value) ? value.filter((k) => typeof k === "string") : [];
+  } catch {
+    return [];
+  }
+}
 
 export default function StudentsPage() {
   const [sp, setSp] = useSearchParams();
@@ -82,7 +118,7 @@ export default function StudentsPage() {
   const stats: StudentStats | null = statsQ.data?.data ?? null;
 
   return (
-    <div className="max-w-[1400px] mx-auto space-y-5">
+    <div className="max-w-none mx-auto space-y-5">
       {/* ── Tabs ── */}
       <section className="card p-1.5">
         <div className="flex items-center gap-1">
@@ -577,6 +613,25 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
   const allowedRoles = ['Academic Secretary', 'Admin', 'registrar', 'superadmin', 'Director of Finance and Administration'];
   const canGenerateDocuments = !!(user?.role_name && allowedRoles.includes(user.role_name));
 
+  // Admin, Registrar, and Super Admin can delete students
+  const canDeleteStudents = !!(user?.role_name && ['Admin', 'registrar', 'superadmin'].includes(user.role_name));
+
+  // Inline district edit saves through POST /students/:id, which needs MANAGE_STUDENTS.
+  const canEditDistrict = usePermission(PERMISSIONS.MANAGE_STUDENTS);
+
+  const [hiddenCols, setHiddenCols] = useState<string[]>(readHiddenColumns);
+  const toggleColumn = (key: string) => {
+    const next = hiddenCols.includes(key)
+      ? hiddenCols.filter((k) => k !== key)
+      : [...hiddenCols, key];
+    setHiddenCols(next);
+    try {
+      localStorage.setItem(HIDDEN_COLUMNS_KEY, JSON.stringify(next));
+    } catch {
+      // Storage unavailable: the choice still applies for this visit.
+    }
+  };
+
   // Entity data for filters. Departments + programs are loaded once and
   // shown flat — no faculty cascade — so the user can pick either directly.
   // Departments now come from /students/filter-options together with their
@@ -706,10 +761,35 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
     sort_dir,
   ]);
 
+  const qc = useQueryClient();
+
   const listQ = useQuery({
     queryKey: ["students", listParams, selectedCampusId, selectedCategory ?? "all"],
     queryFn: () => studentService.list(listParams),
     placeholderData: (prev) => prev,
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (studentId: number) => {
+      const response = await fetch(`/api/students/${studentId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${useAuthStore.getState().token}`,
+        },
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Failed to delete student');
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      toast.success('Student deleted successfully');
+      qc.invalidateQueries({ queryKey: ["students"] });
+    },
+    onError: (error: any) => {
+      toast.error(error.message);
+    },
   });
 
   // Values for the filter bar, each carrying the number of students it would
@@ -739,19 +819,7 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
     label: `${f.label} (${f.total.toLocaleString()})`,
   });
 
-  const facultyFacets: FacetOption[] = useMemo(
-    () => (filterOpts?.faculties ?? []).map(withCount),
-    [filterOpts],
-  );
-
-  // Departments narrow to the chosen faculty; with none chosen, all are shown.
-  // The counts already respect the faculty — the server excludes only the
-  // dimension being counted — so this filter is purely about what to offer.
-  const departmentFacetsScoped: FacetOption[] = useMemo(() => {
-    const all = filterOpts?.departments ?? [];
-    const scoped = faculty ? all.filter((d) => d.faculty_id === faculty) : all;
-    return scoped.map(withCount);
-  }, [filterOpts, faculty]);
+  // Faculty and Department facets removed — use Learning mode for attendance mode reports
 
   // Districts belong to a province, sectors to a district — the pairings come
   // from the data, so cascading never offers a combination nobody lives in.
@@ -885,12 +953,7 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
     return progs.map((o: any) => ({ value: String(o.id), label: String(o.name) }));
   }, [allPrograms, department]);
 
-  /** Department is the entry point: choosing one reveals the (dept-scoped)
-   *  programme picker. Switching department clears any programme that belonged
-   *  to the previous one so we never send a mismatched pair. */
-  const onDepartmentChange = (v: string | undefined) => {
-    update({ department: v || undefined, program: undefined });
-  };
+  // onDepartmentChange removed — Faculty and Department filters removed
 
   const onProgramChange = (v: string | undefined) => {
     update({ program: v || undefined });
@@ -962,6 +1025,25 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
             </button>
             <button
               type="button"
+              onClick={() => {
+                // The whole filtered set, not the current page: paging and
+                // sorting are dropped, as for the flat export.
+                const { page: _p, per_page: _pp, sort_by: _sb, sort_dir: _sd, ...filters } = listParams;
+                studentService.downloadExport(
+                  studentService.exportByAcademicYearUrl({
+                    // The status picker defaults to "active"; this export covers every status.
+                    filters: { ...(filters as Record<string, string | number | undefined>), student_state: "all" },
+                  }),
+                );
+              }}
+              disabled={total === 0}
+              className="btn-secondary btn-sm flex items-center gap-1.5"
+              title="Download the filtered students as an Excel workbook, one sheet per academic year (from each registration number)"
+            >
+              <Download className="w-3.5 h-3.5" /> Export by Academic Year (Excel)
+            </button>
+            <button
+              type="button"
               onClick={() => setExportOpen(true)}
               disabled={total === 0}
               className="btn-primary btn-sm flex items-center gap-1.5"
@@ -993,24 +1075,7 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
             placeholder="All years"
             className="w-full sm:w-48"
           />
-          {/* Faculty narrows the department list below it. */}
-          <FilterSelect
-            label="Faculty"
-            value={faculty}
-            onChange={(v) => update({ faculty: v, department: "", program: "" })}
-            options={facultyFacets}
-            placeholder="All faculties"
-            className="w-full sm:w-64"
-          />
-          {/* Department — scoped to the faculty when one is picked. */}
-          <FilterSelect
-            label="Department"
-            value={department}
-            onChange={onDepartmentChange}
-            options={departmentFacetsScoped}
-            placeholder="Select department…"
-            className="w-full sm:w-56"
-          />
+          {/* Faculty and Department filters removed — use Learning mode instead for attendance reports */}
           {/* Option is Education-only — see showOptionFilter. */}
           {showOptionFilter && (
             <FilterSelect
@@ -1062,15 +1127,18 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
             className="w-full sm:w-44"
           />
           <FilterSelect
-            label="Learning mode"
+            label="Learning mode / Attendance"
             value={learning_mode}
             onChange={(v) => update({ learning_mode: v })}
-            options={(stats?.active_breakdown?.by_learning_mode ?? []).map(
-              (r: BreakdownRow) => ({
-                value: r.value,
-                label: r.label ?? r.value,
-              }),
-            )}
+            options={[
+              { value: "", label: "All modes" },
+              ...(stats?.active_breakdown?.by_learning_mode ?? []).map(
+                (r: BreakdownRow) => ({
+                  value: r.value,
+                  label: r.label ?? r.value,
+                }),
+              ),
+            ]}
             placeholder="Select mode…"
             className="w-full sm:w-44"
           />
@@ -1147,6 +1215,61 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
         )}
       </section>
 
+      {/* Learning mode summary card - shows total count with export button */}
+      <section className="card p-4 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border border-blue-200 dark:border-blue-800">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex-1">
+            <p className="text-[11px] uppercase tracking-[0.2em] font-bold text-blue-600 dark:text-blue-400 mb-1">
+              Learning Mode Summary
+            </p>
+            <p className="text-sm text-ink-600 dark:text-ink-300">
+              {learning_mode ? (
+                <>
+                  Showing <span className="font-semibold text-ink-900 dark:text-ink-100">{learning_mode}</span> mode students
+                </>
+              ) : (
+                <>
+                  Showing <span className="font-semibold text-ink-900 dark:text-ink-100">all learning modes</span>
+                </>
+              )}
+            </p>
+          </div>
+          <div className="flex items-center gap-4">
+            <div className="text-right">
+              <p className="text-4xl font-bold text-blue-600 dark:text-blue-400">
+                {total.toLocaleString()}
+              </p>
+              <p className="text-[11px] text-ink-500">
+                {total === 1 ? "student" : "students"}
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                // The full filtered registry, not just this page: paging and
+                // sorting are dropped, and the columns match the table.
+                const columns = [
+                  'regnumber', 'full_name', 'email', 'phone', 'campus_name', 'gender',
+                  'nationality', '__age', 'district', 'acc_year', '__start_year',
+                  '__end_year', 'learning_mode',
+                ];
+                const { page: _p, per_page: _pp, sort_by: _sb, sort_dir: _sd, ...filters } = listParams;
+                const url = studentService.exportUrl({
+                  columns,
+                  filters: filters as Record<string, string | number | undefined>,
+                  format: 'xlsx',
+                });
+                studentService.downloadExport(url);
+              }}
+              className="btn-primary btn-sm inline-flex items-center gap-2 shrink-0"
+              title="Download as Excel"
+            >
+              <Download className="w-4 h-4" />
+              Download
+            </button>
+          </div>
+        </div>
+      </section>
+
       {/* Table */}
       <section className="card p-0 overflow-hidden">
         <Header
@@ -1169,8 +1292,17 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
           />
         ) : (
           <>
+            <div className="flex justify-end px-4 pt-3">
+              <ColumnPicker
+                hidden={hiddenCols}
+                onToggle={toggleColumn}
+              />
+            </div>
             <div className="overflow-x-auto">
-              <table className="data-table">
+              <table
+                className="data-table students-table"
+                data-hidden-cols={hiddenCols.join(" ")}
+              >
                 <thead>
                   <tr>
                     <th className="w-[40px] pl-4">
@@ -1229,7 +1361,55 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
                       currentDir={sort_dir}
                       onSort={handleSort}
                     />
-                    <th className="text-sm font-semibold text-ink-700 dark:text-ink-300 px-4">Documents</th>
+                    <SortableHeader
+                      label="Age"
+                      field="age"
+                      currentSort={sort_by}
+                      currentDir={sort_dir}
+                      onSort={handleSort}
+                    />
+                    <SortableHeader
+                      label="District"
+                      field="district"
+                      currentSort={sort_by}
+                      currentDir={sort_dir}
+                      onSort={handleSort}
+                    />
+                    <SortableHeader
+                      label="Academic year"
+                      field="acc_year"
+                      currentSort={sort_by}
+                      currentDir={sort_dir}
+                      onSort={handleSort}
+                    />
+                    <SortableHeader
+                      label="Start year"
+                      field="start_year"
+                      currentSort={sort_by}
+                      currentDir={sort_dir}
+                      onSort={handleSort}
+                    />
+                    <SortableHeader
+                      label="End year"
+                      field="end_year"
+                      currentSort={sort_by}
+                      currentDir={sort_dir}
+                      onSort={handleSort}
+                    />
+                    <SortableHeader
+                      label="Learning Mode"
+                      field="learning_mode"
+                      currentSort={sort_by}
+                      currentDir={sort_dir}
+                      onSort={handleSort}
+                    />
+                    <SortableHeader
+                      label="Documents"
+                      field="document_status"
+                      currentSort={sort_by}
+                      currentDir={sort_dir}
+                      onSort={handleSort}
+                    />
                     <th className="w-[120px]"></th>
                   </tr>
                 </thead>
@@ -1241,12 +1421,14 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
                       searchParams={sp}
                       isSelected={selectedIds.has(s.id)}
                       canGenerateDocuments={canGenerateDocuments}
+                      canEditDistrict={canEditDistrict}
                       onToggleSelect={(checked) => {
                         const next = new Set(selectedIds);
                         if (checked) next.add(s.id);
                         else next.delete(s.id);
                         setSelectedIds(next);
                       }}
+                      onDelete={canDeleteStudents ? (studentId) => deleteMutation.mutate(studentId) : undefined}
                     />
                   ))}
                 </tbody>
@@ -1309,6 +1491,54 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
    Gender cell — click the chip to open a tiny popover and change it
    in place, with a success toast on save.
    ───────────────────────────────────────────────────────────── */
+/**
+ * District with inline edit. A missing or unknown district shows a placeholder
+ * in italics. Users with MANAGE_STUDENTS click it to pick the real district.
+ */
+function DistrictCell({
+  studentId,
+  district,
+  canEdit,
+}: {
+  studentId: number;
+  district: string | null | undefined;
+  canEdit: boolean;
+}) {
+  const [anchor, setAnchor] = useState<DOMRect | null>(null);
+  const shown = displayDistrict(district, studentId);
+  const label = (
+    <span
+      className={shown.isPlaceholder ? "italic text-amber-600 dark:text-amber-400" : undefined}
+      title={shown.isPlaceholder ? "Not found in the database. Placeholder shown until a district is set." : undefined}
+    >
+      {shown.name}
+    </span>
+  );
+
+  if (!canEdit) return label;
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={(e) => setAnchor(e.currentTarget.getBoundingClientRect())}
+        className="rounded px-1 -mx-1 hover:ring-2 hover:ring-brand/30 transition-shadow cursor-pointer text-left"
+        title="Click to set the district"
+      >
+        {label}
+      </button>
+      {anchor && (
+        <DistrictEditPopover
+          studentId={studentId}
+          currentDistrict={shown.isPlaceholder ? null : shown.name}
+          anchorRect={anchor}
+          onClose={() => setAnchor(null)}
+        />
+      )}
+    </>
+  );
+}
+
 function GenderCell({
   studentId,
   gender,
@@ -1348,13 +1578,17 @@ function StudentRow({
   searchParams,
   isSelected,
   canGenerateDocuments,
+  canEditDistrict,
   onToggleSelect,
+  onDelete,
 }: {
   s: Student;
   searchParams?: URLSearchParams;
   isSelected?: boolean;
   canGenerateDocuments?: boolean;
+  canEditDistrict?: boolean;
   onToggleSelect?: (checked: boolean) => void;
+  onDelete?: (studentId: number) => void;
 }) {
   const navigate = useNavigate();
   const [docMenuAnchor, setDocMenuAnchor] = useState<DOMRect | null>(null);
@@ -1403,7 +1637,7 @@ function StudentRow({
           className="rounded border-ink-300 text-brand focus:ring-brand"
         />
       </td>
-      <td>
+      <td data-col="fname">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-md bg-brand/10 text-brand dark:bg-brand/25 dark:text-gold-400 flex items-center justify-center font-semibold text-[12px] shrink-0 overflow-hidden relative">
             <span>{initials}</span>
@@ -1424,12 +1658,12 @@ function StudentRow({
           </div>
         </div>
       </td>
-      <td>
+      <td data-col="regnumber">
         <span className="font-mono text-[12px] text-ink-700 dark:text-ink-200">
           {s.regnumber || s.index_number || s.index_file || "—"}
         </span>
       </td>
-      <td>
+      <td data-col="email">
         <div className="flex flex-col gap-0.5">
           {s.email && (
             <span className="text-[12.5px] flex items-center gap-1 text-ink-700 dark:text-ink-200">
@@ -1444,16 +1678,32 @@ function StudentRow({
           {!s.email && !s.phone && <span className="text-ink-400">—</span>}
         </div>
       </td>
-      <td>
+      <td data-col="campus">
         <span className="text-[12.5px] text-ink-700 dark:text-ink-200">
           {String(s.campus_name || s.campus || "—")}
         </span>
       </td>
-      <td onClick={(e) => e.stopPropagation()}>
+      <td data-col="gender" onClick={(e) => e.stopPropagation()}>
         <GenderCell studentId={s.id} gender={s.gender as string | null | undefined} />
       </td>
-      <td>{s.nationality || "—"}</td>
-      <td className="px-4">
+      <td data-col="nationality">{s.nationality || "—"}</td>
+      <td data-col="age" className="text-[12.5px] text-ink-700 dark:text-ink-200">{s.age ?? "—"}</td>
+      <td data-col="district" className="text-[12.5px] text-ink-700 dark:text-ink-200" onClick={(e) => e.stopPropagation()}>
+        <DistrictCell
+          studentId={s.id}
+          district={s.district as string | null | undefined}
+          canEdit={!!canEditDistrict}
+        />
+      </td>
+      <td data-col="acc_year" className="text-[12.5px] text-ink-700 dark:text-ink-200">{s.acc_year || "—"}</td>
+      <td data-col="start_year" className="text-[12.5px] text-ink-700 dark:text-ink-200">{s.start_year ?? "—"}</td>
+      <td data-col="end_year" className="text-[12.5px] text-ink-700 dark:text-ink-200">{s.end_year ?? "—"}</td>
+      <td data-col="learning_mode" className="text-[12.5px] text-ink-700 dark:text-ink-200">
+        <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-ink-100 dark:bg-ink-700/50 text-ink-700 dark:text-ink-300 font-medium">
+          {s.learning_mode || "—"}
+        </span>
+      </td>
+      <td data-col="document_status" className="px-4">
         <DocumentCompletionBadge
           status={documentStatus}
           onClick={() => {
@@ -1496,6 +1746,21 @@ function StudentRow({
             <Eye className="w-3.5 h-3.5" />
             <span>View</span>
           </Link>
+          {onDelete && (
+            <button
+              type="button"
+              className="btn-secondary btn-sm px-2.5 py-1.5 rounded-md text-red-600 dark:text-red-400 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/10 inline-flex items-center gap-1.5 whitespace-nowrap"
+              title="Delete Student"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (window.confirm(`Delete ${[s.fname, s.lname].filter(Boolean).join(" ")}? This cannot be undone.`)) {
+                  onDelete(s.id);
+                }
+              }}
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
       </td>
     </tr>
@@ -1590,6 +1855,59 @@ function FilterSelect({
   );
 }
 
+/** "Columns" menu: tick the columns to show. Hidden columns stay sortable via URL. */
+function ColumnPicker({
+  hidden,
+  onToggle,
+}: {
+  hidden: string[];
+  onToggle: (key: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="btn-secondary btn-sm inline-flex items-center gap-1.5"
+        aria-expanded={open}
+      >
+        <Columns3 className="w-3.5 h-3.5" />
+        Columns{hidden.length > 0 ? ` (${hidden.length} hidden)` : ""}
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full mt-1.5 z-30 w-52 rounded-xl border border-ink-100 dark:border-ink-800 bg-white dark:bg-ink-900 shadow-xl py-1.5">
+          {COLUMN_OPTIONS.map((col) => (
+            <label
+              key={col.key}
+              className="flex items-center gap-2.5 px-3 py-1.5 text-[13px] text-ink-700 dark:text-ink-200 hover:bg-ink-50 dark:hover:bg-ink-800/60 cursor-pointer"
+            >
+              <input
+                type="checkbox"
+                checked={!hidden.includes(col.key)}
+                onChange={() => onToggle(col.key)}
+                className="rounded border-ink-300 text-brand focus:ring-brand"
+              />
+              {col.label}
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Header({
   title,
   sub,
@@ -1680,6 +1998,7 @@ function SortableHeader({
   const active = currentSort === field;
   return (
     <th
+      data-col={field}
       onClick={() => onSort(field)}
       className="cursor-pointer group hover:bg-ink-50/50 dark:hover:bg-ink-800/50 transition-colors select-none"
     >
