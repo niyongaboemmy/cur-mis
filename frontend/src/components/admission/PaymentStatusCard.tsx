@@ -95,6 +95,16 @@ export default function PaymentStatusCard({ applicationId }: Props) {
         <p className="text-[12px] opacity-80">No payments recorded against the admission fees.</p>
       )}
 
+      <div className="text-[12px] rounded-xl border border-ink-200 dark:border-ink-800 p-3">
+        <p className="uppercase tracking-wide opacity-70 mb-1">Application fee</p>
+        <p>
+          {money(s.application_fee.paid)} of {money(s.application_fee.required)} paid
+          {s.application_fee.sufficient
+            ? ' — settled'
+            : ` — ${money(s.application_fee.balance)} outstanding`}
+        </p>
+      </div>
+
       {s.recorded_on_application.amount > 0 && !s.recorded_on_application.matches_ledger && (
         <p className="text-[11px] opacity-80">
           The application record shows {money(s.recorded_on_application.amount)} but the payment ledger shows{' '}

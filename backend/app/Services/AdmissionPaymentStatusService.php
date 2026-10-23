@@ -127,9 +127,7 @@ class AdmissionPaymentStatusService
             'sufficient'         => $sufficient,
             'bills'              => $billRows,
             'payments'           => $this->merge($admissionPayments, $feePayments),
-            'application_fee'    => [
-                'paid' => round($paidApplicationFee, 2),
-            ],
+            'application_fee'    => $this->applicationFee($applicationId),
             'recorded_on_application' => [
                 'amount'         => round($flatPaid, 2),
                 'transaction_id' => $app['transaction_id'] ?? null,
@@ -138,6 +136,36 @@ class AdmissionPaymentStatusService
                     || abs($flatPaid - $paidAdmission) <= self::EPSILON,
             ],
             'message'            => $this->message($bills !== [], $sufficient, $balance, $paidAdmission, $required),
+        ];
+    }
+
+    /**
+     * The application fee, from student_applications and application_fee_payments.
+     *
+     * Delegates to ApplicationFeeService::summaryFor(), which totals the ledger
+     * and falls back to student_applications.payment_amount only when no ledger
+     * rows exist. That keeps the two tables from being counted twice.
+     *
+     * @return array<string,mixed>
+     */
+    private function applicationFee(int $applicationId): array
+    {
+        $summary = (new ApplicationFeeService())->summaryFor($applicationId);
+
+        return [
+            'required'   => round((float)$summary['required'], 2),
+            'paid'       => round((float)$summary['paid'], 2),
+            'balance'    => round((float)$summary['balance'], 2),
+            'currency'   => (string)$summary['currency'],
+            'status'     => (string)$summary['status'],
+            'sufficient' => (bool)$summary['fully_paid'],
+            'payments'   => array_map(static fn (array $p): array => [
+                'amount'         => round((float)$p['amount'], 2),
+                'reference'      => (string)$p['reference_number'],
+                'receipt_number' => $p['receipt_number'] ?? null,
+                'source'         => (string)$p['source'],
+                'paid_at'        => (string)$p['paid_at'],
+            ], $summary['payments']),
         ];
     }
 

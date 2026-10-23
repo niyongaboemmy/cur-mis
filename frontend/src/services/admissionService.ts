@@ -634,7 +634,11 @@ export interface AdmissionPaymentStatus {
   message:            string
   bills: Array<{ id: number; fee_type: string; label: string; due: number; paid: number; balance: number; status: string }>
   payments: Array<{ kind: 'admission' | 'application_fee'; label: string; amount: number; reference: string; receipt_number: string | null; source: string; paid_at: string }>
-  application_fee: { paid: number }
+  application_fee: {
+    required: number; paid: number; balance: number; currency: string
+    status: string; sufficient: boolean
+    payments: Array<{ amount: number; reference: string; receipt_number: string | null; source: string; paid_at: string }>
+  }
   recorded_on_application: { amount: number; transaction_id: string | null; paid_at: string | null; matches_ledger: boolean }
 }
 
