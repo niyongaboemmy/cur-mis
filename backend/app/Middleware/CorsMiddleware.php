@@ -35,6 +35,14 @@ class CorsMiddleware
         } elseif ($origin === '' && !empty($allowedOrigins) && !in_array('*', $allowedOrigins, true)) {
             // Origin header is missing (e.g. same-host curl/Postman requests) — allow through.
             // Do NOT set the header; browsers always send Origin, so this only affects non-browser clients.
+        } elseif ($origin !== '' && filter_var($_ENV['APP_DEBUG'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+            // DEV fallback — mirrors ExceptionHandler::sendCorsHeaders(). Without this,
+            // error responses (which go through the exception handler) are readable from
+            // an unlisted origin while success responses are silently dropped by the
+            // browser, which disguises a CORS misconfiguration as an application bug.
+            // Vite picks the next free port when 5180 is taken, so dev origins drift.
+            header("Access-Control-Allow-Origin: {$origin}");
+            header('Vary: Origin');
         }
 
         header('Access-Control-Allow-Methods: GET, POST, PUT, PATCH, DELETE, OPTIONS');
