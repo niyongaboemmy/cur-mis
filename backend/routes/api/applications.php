@@ -141,7 +141,6 @@ $router->group('/api/admin', function ($router) {
         $router->post('/:id/exemption-status', [ApplicationAdminController::class, 'setExemptionStatus']);
         // Admission billing — the Registration / CURSU fees that stand between
         // the offer and the registration number.
-        $router->get('/:id/payment-status',          [AdmissionController::class, 'paymentStatus']);
         $router->get('/:id/bills',                   [AdmissionController::class, 'listBills']);
         $router->post('/:id/bills',                  [AdmissionController::class, 'createBills']);
         $router->get('/:id/bills/checkout',          [AdmissionController::class, 'billCheckout']);

@@ -597,13 +597,10 @@ class AdmissionBillingService
         float  $amount,
         string $currency,
         string $paidAt,
-        string $serviceCode,
-        string $source = 'GATEWAY',
-        ?int   $recordedBy = null
+        string $serviceCode
     ): array {
         $applicationId = (int)$application['id'];
         $phone         = (string)($application['phone'] ?? '');
-        $manual        = $source === 'MANUAL';
 
         $duplicate = $this->payments->existsForReference($txCode);
         if ($duplicate) {
@@ -655,15 +652,12 @@ class AdmissionBillingService
                 'application_id'         => $applicationId,
                 'amount'                 => $apply,
                 'currency'               => $currency ?: (string)$bill['currency'],
-                'payment_method'         => $manual ? 'MANUAL' : 'MOBILE_MONEY',
+                'payment_method'         => 'MOBILE_MONEY',
                 'reference_number'       => $reference,
                 'receipt_number'         => $receipt,
                 'service_code'           => $serviceCode !== '' ? $serviceCode : null,
-                'source'                 => $source,
-                'recorded_by'            => $recordedBy,
-                'notes'                  => $manual
-                    ? 'Confirmed claim — ref: ' . $txCode
-                    : 'UrubutoPay — service: ' . ($serviceCode ?: 'unspecified') . ', tx: ' . $txCode,
+                'source'                 => 'GATEWAY',
+                'notes'                  => 'UrubutoPay — service: ' . ($serviceCode ?: 'unspecified') . ', tx: ' . $txCode,
                 'paid_at'                => $paidAt,
             ]);
 
@@ -685,7 +679,7 @@ class AdmissionBillingService
         SystemLogService::log(
             'CREATE',
             'ADMISSIONS',
-            ($manual ? 'Confirmed' : 'UrubutoPay') . ' admission fee: tx=' . $txCode
+            'UrubutoPay admission fee: tx=' . $txCode
                 . ', application=' . ($application['application_number'] ?? $applicationId)
                 . ', amount=' . $amount . ' RWF, bills_settled=' . count($applied)
                 . ', balance=' . number_format($summary['balance'], 0) . ' RWF.',

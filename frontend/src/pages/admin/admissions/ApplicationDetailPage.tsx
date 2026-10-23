@@ -48,7 +48,6 @@ import DocumentPreviewModal from "./DocumentPreviewModal";
 import RequestChangesModal from "./RequestChangesModal";
 import ModalPortal from "@/components/ui/ModalPortal";
 import AdmissionFeesPanel from "@/components/admission/AdmissionFeesPanel";
-import PaymentStatusCard from "@/components/admission/PaymentStatusCard";
 import PaymentHistoryPanel from "@/components/admission/PaymentHistoryPanel";
 import { PERMISSIONS } from "@/constants";
 import { usePermission } from "@/utils/permissions";
@@ -612,8 +611,6 @@ export default function ApplicationDetailPage() {
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-6 items-start">
         {/* LEFT: Step Content */}
         <div className="space-y-6">
-          <PaymentStatusCard applicationId={appId} />
-
           {activeStep === 1 && (
             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
               <div className="space-y-6">
