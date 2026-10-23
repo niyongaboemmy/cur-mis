@@ -290,7 +290,6 @@ export function NotifyStudentPanel({
   const outstandingKey = outstanding.map((d) => d.document_type_id).join(',')
   useEffect(() => {
     setSelected(outstanding.map((d) => d.document_type_id))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [outstandingKey])
 
   const hasEmail  = !!contact?.email
