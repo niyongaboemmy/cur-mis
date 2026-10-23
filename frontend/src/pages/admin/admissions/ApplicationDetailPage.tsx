@@ -612,6 +612,8 @@ export default function ApplicationDetailPage() {
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-6 items-start">
         {/* LEFT: Step Content */}
         <div className="space-y-6">
+          <PaymentStatusCard applicationId={appId} />
+
           {activeStep === 1 && (
             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
               <div className="space-y-6">
@@ -1541,8 +1543,6 @@ export default function ApplicationDetailPage() {
                       </div>
                     </div>
                   </div>
-
-                  <PaymentStatusCard applicationId={appId} />
 
                   {status === ApplicationStatus.OFFER_ACCEPTED && !registrationPaid ? (
                     <div className="space-y-5 text-left">
