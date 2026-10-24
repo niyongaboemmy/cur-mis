@@ -41,6 +41,7 @@ import {
   offerService,
   manualAdmissionService,
   admissionBillingService,
+  type AdmissionPaymentStatus,
 } from "@/services/admissionService";
 import { academicsMgmtService } from "@/services/academicsMgmtService";
 import { ApplicationStatus, VerificationStatus } from "@/types/admission";
@@ -48,6 +49,7 @@ import DocumentPreviewModal from "./DocumentPreviewModal";
 import RequestChangesModal from "./RequestChangesModal";
 import ModalPortal from "@/components/ui/ModalPortal";
 import AdmissionFeesPanel from "@/components/admission/AdmissionFeesPanel";
+import PaymentStatusCard from "@/components/admission/PaymentStatusCard";
 import PaymentHistoryPanel from "@/components/admission/PaymentHistoryPanel";
 import { PERMISSIONS } from "@/constants";
 import { usePermission } from "@/utils/permissions";
@@ -274,8 +276,20 @@ export default function ApplicationDetailPage() {
   const registrationBill = (billsQ.data?.data?.bills ?? []).find(
     (b) => b.fee_type === "REGISTRATION",
   );
-  const registrationPaid =
-    !!registrationBill && registrationBill.balance <= 0.009;
+
+  // The next step opens only when the admission fees are settled: every payment
+  // in the ledgers, summed, leaves a balance of zero. Same key as PaymentStatusCard.
+  const ledgerQ = useQuery({
+    queryKey: ["admission-payment-status", appId],
+    queryFn: ({ signal }) => admissionBillingService.paymentStatus(appId, signal),
+    select: (res) => res.data as AdmissionPaymentStatus | undefined,
+    enabled: !!appId,
+    retry: false,
+    refetchInterval: 15000,
+  });
+  const ledger = ledgerQ.data;
+  const feesOwed = ledger ? ledger.balance : 0;
+  const feesSettled = !!ledger && ledger.billed && ledger.sufficient;
   const queueIdx = queue.findIndex((a: any) => a.id === appId);
   const prevApp = queueIdx > 0 ? queue[queueIdx - 1] : null;
   const nextApp = queueIdx < queue.length - 1 ? queue[queueIdx + 1] : null;
@@ -611,6 +625,8 @@ export default function ApplicationDetailPage() {
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-6 items-start">
         {/* LEFT: Step Content */}
         <div className="space-y-6">
+          <PaymentStatusCard applicationId={appId} />
+
           {activeStep === 1 && (
             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
               <div className="space-y-6">
@@ -1373,13 +1389,19 @@ export default function ApplicationDetailPage() {
                   />
 
                   {maxStep >= 4 && (
-                    <div className="flex justify-center">
+                    <div className="flex flex-col items-center gap-2">
                       <button
                         className="btn-secondary"
+                        disabled={!feesSettled}
                         onClick={() => setActiveStep(4)}
                       >
                         Proceed to Step 4 <ChevronRight className="w-4 h-4 ml-2" />
                       </button>
+                      {ledger && !feesSettled && (
+                        <p className="text-[12px] font-semibold text-amber-700 dark:text-amber-300">
+                          Balance of {Number(feesOwed).toLocaleString()} RWF must be paid before continuing.
+                        </p>
+                      )}
                     </div>
                   )}
                 </>
@@ -1396,9 +1418,9 @@ export default function ApplicationDetailPage() {
                     Finalize Enrollment
                   </h3>
                   <p className="text-ink-500 text-[14px] mb-8 max-w-sm mx-auto">
-                    {registrationPaid
-                      ? "Registration fee is paid. Please review the enrollment details before generating the official registration number."
-                      : "Review the enrollment details below. The registration number is issued only after the Registration fee is paid."}
+                    {feesSettled
+                      ? "Admission fees are fully paid. Please review the enrollment details before generating the official registration number."
+                      : "Review the enrollment details below. The registration number is issued only after the admission fees are fully paid."}
                   </p>
 
                   {/* Enrollment Details Summary */}
@@ -1541,16 +1563,18 @@ export default function ApplicationDetailPage() {
                     </div>
                   </div>
 
-                  {status === ApplicationStatus.OFFER_ACCEPTED && !registrationPaid ? (
+                  {status === ApplicationStatus.OFFER_ACCEPTED && !feesSettled ? (
                     <div className="space-y-5 text-left">
                       <div className="rounded-2xl border-2 border-red-500 bg-red-50 dark:bg-red-950/30 p-5">
                         <p className="text-[15px] font-black text-red-900 dark:text-red-100 uppercase tracking-tight">
-                          Enrollment is locked until the Registration fee is paid
+                          Enrollment is locked until the admission fees are fully paid
                         </p>
                         <p className="text-[12px] text-red-800 dark:text-red-200 mt-1">
-                          {registrationBill
-                            ? `The Registration fee of ${Number(registrationBill.amount_due).toLocaleString()} RWF is still unpaid.`
-                            : "The Registration fee has not been billed yet. Bill the applicant first, then they pay before enrollment."}
+                          {ledger && ledger.billed
+                            ? `Balance still owed: ${Number(feesOwed).toLocaleString()} RWF of ${Number(ledger.required).toLocaleString()} RWF.`
+                            : registrationBill
+                              ? `The Registration fee of ${Number(registrationBill.amount_due).toLocaleString()} RWF is still unpaid.`
+                              : "The admission fees have not been billed yet. Bill the applicant first, then they pay before enrollment."}
                         </p>
                       </div>
                       <AdmissionFeesPanel

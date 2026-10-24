@@ -9,7 +9,7 @@ import Modal from '@/components/ui/Modal'
 import BordereauPaymentForm from './BordereauPaymentForm'
 import {
   admissionBillingService, applicantService,
-  type AdmissionBill, type AdmissionBillingOverview,
+  type AdmissionBill, type AdmissionBillingOverview, type AdmissionPaymentStatus,
 } from '@/services/admissionService'
 
 /**
@@ -76,11 +76,30 @@ export default function AdmissionFeesPanel({
     refetchIntervalInBackground: true,
   })
 
+  // Validator: what has been paid is summed from the payment ledgers, the same
+  // figure the enrollment gate reads, so the balance shown here is the one that
+  // decides whether the next step opens.
+  const ledgerQ = useQuery({
+    queryKey: ['admission-payment-status', applicationId],
+    queryFn: ({ signal }) => admissionBillingService.paymentStatus(applicationId as number, signal),
+    select: (res) => res.data as AdmissionPaymentStatus | undefined,
+    enabled: isValidator && Boolean(applicationId),
+    retry: false,
+    refetchInterval: 15000,
+  })
+  const ledger = isValidator ? ledgerQ.data : undefined
+
   const data = billsQ.data?.data
   // No default: when two merchants exist the payer must pick one before paying.
   const merchantPending = Boolean(data?.kigali_merchant_code) && merchantChoice === null
   const bills = data?.bills ?? []
   const summary = data?.summary
+
+  // Figures for the header and the alert. The validator reads the ledger totals;
+  // the applicant keeps the invoice totals they already see.
+  const owed = ledger ? ledger.balance : (summary?.balance ?? 0)
+  const requiredTotal = ledger ? ledger.required : (summary?.total_due ?? 0)
+  const paidTotal = ledger ? ledger.paid : (summary?.total_paid ?? 0)
 
   // Announce the two transitions that matter, once each.
   const [seenPaid, setSeenPaid] = useState(false)
@@ -320,7 +339,7 @@ export default function AdmissionFeesPanel({
       )}
 
       {/* Validator Alert: Insufficient Payment */}
-      {isValidator && summary && summary.balance > 0 && canManage && (
+      {isValidator && ledger && ledger.billed && !ledger.sufficient && canManage && (
         <div className="p-4 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 flex items-start gap-3">
           <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
           <div className="flex-1 min-w-0">
@@ -329,20 +348,20 @@ export default function AdmissionFeesPanel({
             </p>
             <p className="text-[12px] text-red-700 dark:text-red-200 mt-1">
               This applicant has not paid the full amount required for admission. Current balance:{' '}
-              <span className="font-bold">{fmt(summary.balance)} RWF</span>
+              <span className="font-bold">{fmt(owed)} RWF</span>
             </p>
             <div className="mt-3 space-y-2 bg-white dark:bg-red-900/20 p-3 rounded">
               <div className="flex justify-between text-[12px]">
                 <span className="text-red-700 dark:text-red-300">Total Required:</span>
-                <span className="font-bold">{fmt(summary.total_due)} RWF</span>
+                <span className="font-bold">{fmt(requiredTotal)} RWF</span>
               </div>
               <div className="flex justify-between text-[12px]">
                 <span className="text-red-700 dark:text-red-300">Paid to Date:</span>
-                <span className="font-bold">{fmt(summary.total_paid)} RWF</span>
+                <span className="font-bold">{fmt(paidTotal)} RWF</span>
               </div>
               <div className="border-t border-red-200 dark:border-red-700 pt-2 mt-2 flex justify-between text-[12px]">
                 <span className="text-red-900 dark:text-red-100 font-semibold">Balance Due:</span>
-                <span className="font-black text-red-600 dark:text-red-400">{fmt(summary.balance)} RWF</span>
+                <span className="font-black text-red-600 dark:text-red-400">{fmt(owed)} RWF</span>
               </div>
             </div>
             <p className="text-[11px] text-red-600 dark:text-red-300 mt-2">
@@ -363,14 +382,14 @@ export default function AdmissionFeesPanel({
         />
         <div className="text-right shrink-0">
           <p className="text-[11px] font-bold uppercase tracking-widest text-ink-400">
-            {summary && summary.balance > 0 ? 'Balance' : 'Total paid'}
+            {owed > 0 ? 'Balance' : 'Total paid'}
           </p>
           <p className={`text-[22px] font-black tabular-nums ${
-            summary && summary.balance > 0
+            owed > 0
               ? 'text-amber-600 dark:text-amber-400'
               : 'text-emerald-600 dark:text-emerald-400'
           }`}>
-            {fmt(summary && summary.balance > 0 ? summary.balance : summary?.total_paid ?? 0)} RWF
+            {fmt(owed > 0 ? owed : paidTotal)} RWF
           </p>
         </div>
       </div>
@@ -538,7 +557,7 @@ export default function AdmissionFeesPanel({
       </div>
 
       {/* Where this leaves the applicant */}
-      {summary && summary.balance > 0 ? (
+      {owed > 0 ? (
         <Note tone="amber" icon={<Wallet className="w-5 h-5" />}>
           {isValidator
             ? 'The registration number is withheld until this balance reaches zero. Payments confirmed by Urubuto Pay appear here within seconds — no refresh needed.'
@@ -659,6 +678,7 @@ export default function AdmissionFeesPanel({
           onDone={() => {
             setConfirming(null)
             qc.invalidateQueries({ queryKey })
+            qc.invalidateQueries({ queryKey: ['admission-payment-status', applicationId] })
           }}
         />
       )}
