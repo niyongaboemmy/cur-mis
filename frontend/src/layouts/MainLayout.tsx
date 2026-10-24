@@ -689,7 +689,7 @@ const NAV_TREE: NavNode[] = [
         ],
       },
       {
-        to: "/finance/billing",
+        to: "/finance/billing-system",
         label: "Billing",
         permissions: [PERMISSIONS.VIEW_FINANCE_BILLING],
       },
@@ -1176,6 +1176,10 @@ const ROUTE_TITLES: Record<string, { title: string; sub?: string }> = {
   "/finance/billing": {
     title: "Billing",
     sub: "Student ledger and invoice management",
+  },
+  "/finance/billing-system": {
+    title: "Billing",
+    sub: "Billing system",
   },
   "/finance/structures": {
     title: "Fee Rates",
