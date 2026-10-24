@@ -49,6 +49,7 @@ import SupervisorLeaveApprovalDashboard from "@/pages/hr/SupervisorLeaveApproval
 import PayrollManagementPage from "@/pages/hr/PayrollManagementPage";
 import PayrollPhpPage from "@/pages/hr/PayrollPhpPage";
 import LeavePhpPage from "@/pages/hr/LeavePhpPage";
+import MyPayslipsPhpPage from "@/pages/hr/MyPayslipsPhpPage";
 import ContractManagementPage from "@/pages/hr/ContractManagementPage";
 import HrMonitoringDashboard from "@/pages/hr/HrMonitoringDashboard";
 import PerformanceMonitoringPage from "@/pages/hr/PerformanceMonitoringPage";
@@ -495,6 +496,9 @@ function App() {
 
               {/* ── Staff self-service: leave — same PHP leave app as HR → Leave ── */}
               <Route path="/me/leave" element={<LeavePhpPage />} />
+
+              {/* ── Staff self-service: payslips — same PHP payroll app for every staff account ── */}
+              <Route path="/me/payslips" element={<MyPayslipsPhpPage />} />
 
               {/* ── Teacher (lecturer) self-service portal ──
                   Gated on ACCESS_TEACHER_PORTAL, NOT VIEW_MY_MODULES — the

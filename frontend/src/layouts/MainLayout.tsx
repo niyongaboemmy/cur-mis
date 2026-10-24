@@ -245,7 +245,7 @@ const NAV_TREE: NavNode[] = [
     id: "my-payroll",
     label: "My Payroll",
     icon: Wallet,
-    to: "/me/payroll",
+    to: "/me/payslips",
     hideForRoles: ["student", "applicant"],
   },
   {
@@ -1101,6 +1101,10 @@ const ROUTE_TITLES: Record<string, { title: string; sub?: string }> = {
   "/me/payroll": {
     title: "My Payroll",
     sub: "Your personal payslip history and salary breakdown",
+  },
+  "/me/payslips": {
+    title: "My Payroll",
+    sub: "Your payslips",
   },
   "/me/leave": {
     title: "My Leave",
