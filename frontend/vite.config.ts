@@ -23,6 +23,10 @@ export default defineConfig(({ mode }) => {
 
     server: {
       port: 5180,
+      // Fail loudly if 5180 is taken instead of drifting to 5181, 5182, …
+      // The backend's CORS_ALLOWED_ORIGINS is a fixed list, so a drifted port
+      // is not an allowed origin and every API call dies on CORS.
+      strictPort: true,
       // Bind to 0.0.0.0 so other devices on the same LAN can reach the dev
       // server (e.g. http://<your-LAN-IP>:5180). The /api proxy below still
       // runs on this machine and forwards to the PHP dev backend server.

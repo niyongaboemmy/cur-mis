@@ -21,7 +21,7 @@ export default function RegistrarReportPage() {
         <iframe
           src="https://cur.ac.rw/umis/documents/registrar_report/index.php"
           title="Academic Reports"
-          className="w-full h-full border-0"
+          className="block w-full h-full border-0 bg-white"
           allow="fullscreen"
         />
       </div>

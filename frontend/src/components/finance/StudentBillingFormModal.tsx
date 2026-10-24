@@ -42,7 +42,7 @@ export default function StudentBillingFormModal({
           <iframe
             src={formUrl}
             title="Students Billing Form"
-            className="w-full h-full border-0"
+            className="block w-full h-full border-0 bg-white"
             allow="fullscreen"
           />
         </div>

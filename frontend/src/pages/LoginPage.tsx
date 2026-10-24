@@ -113,7 +113,7 @@ export default function LoginPage() {
 
       {showDocumentsModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-3xl h-[85vh] flex flex-col overflow-hidden">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-none h-full flex flex-col overflow-hidden">
             <div className="flex items-center justify-between p-4 border-b border-gray-100 dark:border-gray-800">
               <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Activate Account</h2>
               <button
@@ -127,7 +127,7 @@ export default function LoginPage() {
               <iframe
                 src="https://cur.ac.rw/umis/documents/student_acount/index.php"
                 title="Student Documents"
-                className="w-full h-full border-0"
+                className="block w-full h-full border-0 bg-white"
               />
             </div>
           </div>
