@@ -894,9 +894,9 @@ function App() {
                   />
                 }
               >
+                <Route path="/finance/billing-system" element={<BillingPhpPage />} />
                 <Route path="/finance" element={<FinanceHub />}>
                   <Route index element={<FinanceOverviewPage />} />
-                  <Route path="billing-system" element={<BillingPhpPage />} />
                   <Route path="billing" element={<StudentBillingPage />} />
                   <Route path="billing/*" element={<StudentLedgerPage />} />
                   <Route path="approvals" element={<PaymentApprovalsPage />} />
