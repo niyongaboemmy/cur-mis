@@ -165,10 +165,48 @@ const NAV_TREE: NavNode[] = [
     id: "student-profile",
     label: "Profile",
     icon: UserIcon,
-    to: "/me/profile",
-    // Role-scoped: enrolled students see "My Profile" wired to /api/students/me.
+    // Role-scoped: enrolled students see their profile wired to /api/students/me.
+    // Each tab of the profile page is a direct entry so students land on it.
     roles: ["student"],
     permissions: [PERMISSIONS.ACCESS_STUDENT_PORTAL],
+    children: [
+      {
+        to: "/me/profile?tab=overview",
+        label: "Overview & Stats",
+        roles: ["student"],
+        permissions: [PERMISSIONS.ACCESS_STUDENT_PORTAL],
+      },
+      {
+        to: "/me/profile?tab=attendance",
+        label: "Attendance",
+        roles: ["student"],
+        permissions: [PERMISSIONS.ACCESS_STUDENT_PORTAL],
+      },
+      {
+        to: "/me/profile?tab=documents",
+        label: "Documents",
+        roles: ["student"],
+        permissions: [PERMISSIONS.ACCESS_STUDENT_PORTAL],
+      },
+      {
+        to: "/me/profile?tab=curriculum",
+        label: "Program & Marks",
+        roles: ["student"],
+        permissions: [PERMISSIONS.ACCESS_STUDENT_PORTAL],
+      },
+      {
+        to: "/me/profile?tab=finance",
+        label: "Finance",
+        roles: ["student"],
+        permissions: [PERMISSIONS.ACCESS_STUDENT_PORTAL],
+      },
+      {
+        to: "/me/profile?tab=transcript",
+        label: "Transcript",
+        roles: ["student"],
+        permissions: [PERMISSIONS.ACCESS_STUDENT_PORTAL],
+      },
+    ],
   },
   {
     id: "student-services",
@@ -763,14 +801,6 @@ const NAV_TREE: NavNode[] = [
     to: "/my/service-requests",
     roles: ["student"],
     permissions: [PERMISSIONS.ACCESS_STUDENT_PORTAL, PERMISSIONS.SUBMIT_SERVICE_REQUEST],
-  },
-  {
-    id: "attendance-student",
-    label: "Attendance",
-    icon: ClipboardCheck,
-    to: "/me/profile?tab=attendance",
-    roles: ["student"],
-    permissions: [PERMISSIONS.ACCESS_STUDENT_PORTAL],
   },
   {
     id: "exam",
