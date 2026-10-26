@@ -48,6 +48,12 @@ import HRImportExportPage from "@/pages/hr/HRImportExportPage";
 import SupervisorLeaveApprovalDashboard from "@/pages/hr/SupervisorLeaveApprovalDashboard";
 import PayrollManagementPage from "@/pages/hr/PayrollManagementPage";
 import PayrollPhpPage from "@/pages/hr/PayrollPhpPage";
+import PayrollDataQualityPage from "@/pages/hr/PayrollDataQualityPage";
+import PayrollRunsPage from "@/pages/hr/PayrollRunsPage";
+import PayrollRunDetailPage from "@/pages/hr/PayrollRunDetailPage";
+import PayrollSettingsPage from "@/pages/hr/PayrollSettingsPage";
+import EmployeePayrollProfilePage from "@/pages/hr/EmployeePayrollProfilePage";
+import PartTimePage from "@/pages/hr/PartTimePage";
 import LeavePhpPage from "@/pages/hr/LeavePhpPage";
 import MyPayslipsPhpPage from "@/pages/hr/MyPayslipsPhpPage";
 import ContractManagementPage from "@/pages/hr/ContractManagementPage";
@@ -435,6 +441,13 @@ function App() {
                 <Route path="/hr/payroll-management" element={<PayrollManagementPage />} />
                 <Route path="/hr/payments" element={<PaymentsPage />} />
                 <Route path="/hr/payroll-system" element={<PayrollPhpPage />} />
+                <Route path="/hr/payroll-data-quality" element={<PayrollDataQualityPage />} />
+                <Route path="/hr/payroll-runs" element={<PayrollRunsPage />} />
+                <Route path="/hr/payroll-runs/:id" element={<PayrollRunDetailPage />} />
+                <Route path="/hr/payroll-settings" element={<PayrollSettingsPage />} />
+                <Route path="/hr/payroll-profile" element={<EmployeePayrollProfilePage />} />
+                <Route path="/hr/payroll-profile/:employeeId" element={<EmployeePayrollProfilePage />} />
+                <Route path="/hr/part-time" element={<PartTimePage />} />
               </Route>
 
               {/* ── Leave management — any HR viewer OR leave view/approve role ── */}
