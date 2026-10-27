@@ -4814,11 +4814,12 @@ function StudentFinanceTab({
             <table className="w-full text-sm">
               <thead className="bg-ink-50 dark:bg-ink-700/50 text-ink-500 text-xs uppercase">
                 <tr>
-                  <th className="px-4 py-2.5 text-left">Invoice #</th>
-                  <th className="px-4 py-2.5 text-left">Type</th>
+                  <th className="px-4 py-2.5 text-left">Invoice No.</th>
+                  <th className="px-4 py-2.5 text-left">Fee Type</th>
                   <th className="px-4 py-2.5 text-left">Description</th>
-                  <th className="px-4 py-2.5 text-right">Due</th>
+                  <th className="px-4 py-2.5 text-right">Amount</th>
                   <th className="px-4 py-2.5 text-right">Paid</th>
+                  <th className="px-4 py-2.5 text-right">Bursary</th>
                   <th className="px-4 py-2.5 text-center">Status</th>
                 </tr>
               </thead>
@@ -4832,6 +4833,9 @@ function StudentFinanceTab({
                     <td className="px-4 py-2.5 text-xs">{inv.description}</td>
                     <td className="px-4 py-2.5 text-right font-mono text-xs">{formatRWF(inv.amount_due)}</td>
                     <td className="px-4 py-2.5 text-right font-mono text-xs text-green-600">{formatRWF(inv.amount_paid)}</td>
+                    <td className="px-4 py-2.5 text-right font-mono text-xs text-ink-500">
+                      {Number(inv.bursary_applied) > 0 ? formatRWF(inv.bursary_applied) : "—"}
+                    </td>
                     <td className="px-4 py-2.5 text-center">
                       <InvoiceStatusBadge status={inv.status} />
                     </td>

@@ -57,6 +57,7 @@ class Permissions
     public const MANAGE_LEAVE_TYPES = 'MANAGE_LEAVE_TYPES';
     public const VIEW_PAYROLL = 'VIEW_PAYROLL';
     public const MANAGE_PAYROLL = 'MANAGE_PAYROLL';
+    public const APPROVE_PAYROLL = 'APPROVE_PAYROLL';
     public const VIEW_LEAVE_REQUESTS = 'VIEW_LEAVE_REQUESTS';
     public const MANAGE_LEAVE_REQUESTS = 'MANAGE_LEAVE_REQUESTS';
     public const REQUEST_LEAVE = 'REQUEST_LEAVE';
@@ -248,6 +249,7 @@ class Permissions
             self::MANAGE_LEAVE_TYPES,
             self::VIEW_PAYROLL,
             self::MANAGE_PAYROLL,
+            self::APPROVE_PAYROLL,
             self::VIEW_FINANCE,
             self::VIEW_FINANCE_OVERVIEW,
             self::VIEW_FINANCE_BILLING,

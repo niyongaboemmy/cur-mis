@@ -163,12 +163,50 @@ const NAV_TREE: NavNode[] = [
   },
   {
     id: "student-profile",
-    label: "Profile",
+    label: "Overview Services & Status",
     icon: UserIcon,
-    to: "/me/profile",
-    // Role-scoped: enrolled students see "My Profile" wired to /api/students/me.
+    // Role-scoped: enrolled students see their profile wired to /api/students/me.
+    // Each tab of the profile page is a direct entry so students land on it.
     roles: ["student"],
     permissions: [PERMISSIONS.ACCESS_STUDENT_PORTAL],
+    children: [
+      {
+        to: "/me/profile?tab=overview",
+        label: "Overview & Stats",
+        roles: ["student"],
+        permissions: [PERMISSIONS.ACCESS_STUDENT_PORTAL],
+      },
+      {
+        to: "/me/profile?tab=attendance",
+        label: "Attendance",
+        roles: ["student"],
+        permissions: [PERMISSIONS.ACCESS_STUDENT_PORTAL],
+      },
+      {
+        to: "/me/profile?tab=documents",
+        label: "Documents",
+        roles: ["student"],
+        permissions: [PERMISSIONS.ACCESS_STUDENT_PORTAL],
+      },
+      {
+        to: "/me/profile?tab=curriculum",
+        label: "Program & Marks",
+        roles: ["student"],
+        permissions: [PERMISSIONS.ACCESS_STUDENT_PORTAL],
+      },
+      {
+        to: "/me/profile?tab=finance",
+        label: "Finance",
+        roles: ["student"],
+        permissions: [PERMISSIONS.ACCESS_STUDENT_PORTAL],
+      },
+      {
+        to: "/me/profile?tab=transcript",
+        label: "Transcript",
+        roles: ["student"],
+        permissions: [PERMISSIONS.ACCESS_STUDENT_PORTAL],
+      },
+    ],
   },
   {
     id: "student-services",
@@ -245,7 +283,7 @@ const NAV_TREE: NavNode[] = [
     id: "my-payroll",
     label: "My Payroll",
     icon: Wallet,
-    to: "/me/payroll",
+    to: "/me/payslips",
     hideForRoles: ["student", "applicant"],
   },
   {
@@ -408,6 +446,8 @@ const NAV_TREE: NavNode[] = [
     id: "modules",
     label: "Academics",
     icon: BookOpen,
+    // Students reach their modules through Overview Services & Status.
+    hideForRoles: ["student"],
     // Visibility follows the PERMISSIONS below, never the role name. Teaching
     // staff reach their own courses through "My Teaching"; when they are also
     // granted the management permissions here — as a HOD normally is — this
@@ -430,16 +470,6 @@ const NAV_TREE: NavNode[] = [
       PERMISSIONS.MANAGE_GRADUANDS,
     ],
     children: [
-      // Student self-service — opens the same Program & Marks view that
-      // lives under /me/profile so the curriculum, registration state and
-      // marks are presented identically across both entry points. Hidden
-      // from non-students; teachers get the assignment-driven view below.
-      {
-        to: "/me/profile?tab=curriculum",
-        label: "My modules",
-        roles: ["student"],
-        permissions: [PERMISSIONS.ACCESS_STUDENT_PORTAL],
-      },
       // Teacher / staff self-service — modules the user is assigned to
       // teach. Skipped for students since they have the curriculum view
       // above; admin/superadmin already see the full management children.
@@ -689,7 +719,7 @@ const NAV_TREE: NavNode[] = [
         ],
       },
       {
-        to: "/finance/billing",
+        to: "/finance/billing-system",
         label: "Billing",
         permissions: [PERMISSIONS.VIEW_FINANCE_BILLING],
       },
@@ -743,17 +773,6 @@ const NAV_TREE: NavNode[] = [
       PERMISSIONS.MANAGE_ATTENDANCE,
     ],
   },
-  // Student self-service — opens the same attendance summary that lives
-  // under /me/profile, so the student sees only their own per-module
-  // attendance numbers without admin/teacher controls.
-  {
-    id: "student-finance",
-    label: "My Finance",
-    icon: CreditCard,
-    to: "/my-finance",
-    roles: ["student"],
-    permissions: [PERMISSIONS.ACCESS_STUDENT_PORTAL, PERMISSIONS.MY_INVOICE],
-  },
   // Student self-service — submit/track service requests (transcripts,
   // enrollment letters, etc.) and pay/download once approved.
   {
@@ -763,14 +782,6 @@ const NAV_TREE: NavNode[] = [
     to: "/my/service-requests",
     roles: ["student"],
     permissions: [PERMISSIONS.ACCESS_STUDENT_PORTAL, PERMISSIONS.SUBMIT_SERVICE_REQUEST],
-  },
-  {
-    id: "attendance-student",
-    label: "Attendance",
-    icon: ClipboardCheck,
-    to: "/me/profile?tab=attendance",
-    roles: ["student"],
-    permissions: [PERMISSIONS.ACCESS_STUDENT_PORTAL],
   },
   {
     id: "exam",
@@ -1102,6 +1113,10 @@ const ROUTE_TITLES: Record<string, { title: string; sub?: string }> = {
     title: "My Payroll",
     sub: "Your personal payslip history and salary breakdown",
   },
+  "/me/payslips": {
+    title: "My Payroll",
+    sub: "Your payslips",
+  },
   "/me/leave": {
     title: "My Leave",
     sub: "Request leave and track your own requests",
@@ -1176,6 +1191,10 @@ const ROUTE_TITLES: Record<string, { title: string; sub?: string }> = {
   "/finance/billing": {
     title: "Billing",
     sub: "Student ledger and invoice management",
+  },
+  "/finance/billing-system": {
+    title: "Billing",
+    sub: "Billing system",
   },
   "/finance/structures": {
     title: "Fee Rates",

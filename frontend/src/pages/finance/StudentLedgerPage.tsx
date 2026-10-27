@@ -280,11 +280,6 @@ export default function StudentLedgerPage() {
             </div>
           )}
 
-          {/* Installment Breakdown */}
-          {yearId && invoices.length > 0 && (
-            <InstallmentBreakdown yearId={Number(yearId)} invoices={invoices} />
-          )}
-
           {/* Invoices */}
           <div className="card overflow-hidden">
             <div className="px-4 py-2.5 border-b border-ink-100 dark:border-ink-700 font-medium text-sm flex items-center gap-2 bg-ink-50/50 dark:bg-ink-700/20">
@@ -727,102 +722,6 @@ function InvoiceDetailModal({
       </div>
     </div>
     </ModalPortal>
-  );
-}
-
-// ─── Installment Breakdown Panel ──────────────────────────────────────────────
-
-function InstallmentBreakdown({
-  yearId,
-  invoices,
-}: {
-  yearId: number;
-  invoices: FeeInvoice[];
-}) {
-  const structuresQ = useQuery({
-    queryKey: ["fee-structures", yearId],
-    queryFn: () =>
-      feeStructureService.list({ academic_year_id: yearId, is_active: 1 }),
-    enabled: yearId > 0,
-  });
-
-  if (!structuresQ.data?.data) return null;
-
-  const structures = structuresQ.data.data;
-  const installmentStructures = structures
-    .map((s) => ({ ...analyseStructure(s, invoices), ...s }))
-    .filter((a) => a.plan !== "full_year");
-
-  if (installmentStructures.length === 0) return null;
-
-  return (
-    <div className="card">
-      <div className="px-4 py-2.5 border-b border-ink-100 dark:border-ink-700 font-medium text-sm flex items-center gap-2 bg-ink-50/50 dark:bg-ink-700/20">
-        <Info className="w-4 h-4 text-ink-400" />
-        <span>Installment Breakdown</span>
-      </div>
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="bg-ink-50 dark:bg-ink-700/50 text-ink-500 text-xs uppercase">
-            <tr>
-              <th className="px-4 py-2.5 text-left">Fee Structure</th>
-              <th className="px-4 py-2.5 text-left">Plan Type</th>
-              <th className="px-4 py-2.5 text-right">Invoiced</th>
-              <th className="px-4 py-2.5 text-right">Amount Due</th>
-              <th className="px-4 py-2.5 text-right">Remaining</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-ink-100 dark:divide-ink-700">
-            {installmentStructures.map((analysis) => (
-              <tr
-                key={analysis.structure.id}
-                className="hover:bg-ink-50 dark:hover:bg-ink-800/30"
-              >
-                <td className="px-4 py-3">
-                  <p className="font-medium text-ink-900 dark:text-white">
-                    {analysis.structure.label}
-                  </p>
-                </td>
-                <td className="px-4 py-3 text-ink-600 dark:text-ink-400">
-                  {analysis.plan === "per_semester"
-                    ? `Per Semester (${analysis.invoicedSemesters.length}/2 invoiced)`
-                    : `Per Installment (${analysis.existingCount}/${analysis.installmentCount} invoiced)`}
-                </td>
-                <td className="px-4 py-3 text-right text-ink-700 dark:text-ink-300">
-                  RWF{" "}
-                  {analysis.invoicedTotal.toLocaleString("en-US", {
-                    minimumFractionDigits: 0,
-                    maximumFractionDigits: 0,
-                  })}
-                </td>
-                <td className="px-4 py-3 text-right text-ink-700 dark:text-ink-300">
-                  RWF{" "}
-                  {analysis.structure.amount.toLocaleString("en-US", {
-                    minimumFractionDigits: 0,
-                    maximumFractionDigits: 0,
-                  })}
-                </td>
-                <td className="px-4 py-3 text-right font-medium">
-                  <span
-                    className={
-                      analysis.remaining > 0
-                        ? "text-red-600"
-                        : "text-green-600"
-                    }
-                  >
-                    RWF{" "}
-                    {analysis.remaining.toLocaleString("en-US", {
-                      minimumFractionDigits: 0,
-                      maximumFractionDigits: 0,
-                    })}
-                  </span>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
   );
 }
 

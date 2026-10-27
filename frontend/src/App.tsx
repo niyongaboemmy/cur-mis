@@ -48,7 +48,14 @@ import HRImportExportPage from "@/pages/hr/HRImportExportPage";
 import SupervisorLeaveApprovalDashboard from "@/pages/hr/SupervisorLeaveApprovalDashboard";
 import PayrollManagementPage from "@/pages/hr/PayrollManagementPage";
 import PayrollPhpPage from "@/pages/hr/PayrollPhpPage";
+import PayrollDataQualityPage from "@/pages/hr/PayrollDataQualityPage";
+import PayrollRunsPage from "@/pages/hr/PayrollRunsPage";
+import PayrollRunDetailPage from "@/pages/hr/PayrollRunDetailPage";
+import PayrollSettingsPage from "@/pages/hr/PayrollSettingsPage";
+import EmployeePayrollProfilePage from "@/pages/hr/EmployeePayrollProfilePage";
+import PartTimePage from "@/pages/hr/PartTimePage";
 import LeavePhpPage from "@/pages/hr/LeavePhpPage";
+import MyPayslipsPhpPage from "@/pages/hr/MyPayslipsPhpPage";
 import ContractManagementPage from "@/pages/hr/ContractManagementPage";
 import HrMonitoringDashboard from "@/pages/hr/HrMonitoringDashboard";
 import PerformanceMonitoringPage from "@/pages/hr/PerformanceMonitoringPage";
@@ -148,6 +155,7 @@ import FinanceHub from "@/pages/finance/FinanceHub";
 import FinanceOverviewPage from "@/pages/finance/FinanceOverviewPage";
 import StudentLedgerPage from "@/pages/finance/StudentLedgerPage";
 import StudentBillingPage from "@/pages/finance/StudentBillingPage";
+import BillingPhpPage from "@/pages/finance/BillingPhpPage";
 import PaymentApprovalsPage from "@/pages/finance/PaymentApprovalsPage";
 import BordereauVerificationPage from "@/pages/finance/BordereauVerificationPage";
 import FeeStructuresPage from "@/pages/finance/FeeStructuresPage";
@@ -433,6 +441,13 @@ function App() {
                 <Route path="/hr/payroll-management" element={<PayrollManagementPage />} />
                 <Route path="/hr/payments" element={<PaymentsPage />} />
                 <Route path="/hr/payroll-system" element={<PayrollPhpPage />} />
+                <Route path="/hr/payroll-data-quality" element={<PayrollDataQualityPage />} />
+                <Route path="/hr/payroll-runs" element={<PayrollRunsPage />} />
+                <Route path="/hr/payroll-runs/:id" element={<PayrollRunDetailPage />} />
+                <Route path="/hr/payroll-settings" element={<PayrollSettingsPage />} />
+                <Route path="/hr/payroll-profile" element={<EmployeePayrollProfilePage />} />
+                <Route path="/hr/payroll-profile/:employeeId" element={<EmployeePayrollProfilePage />} />
+                <Route path="/hr/part-time" element={<PartTimePage />} />
               </Route>
 
               {/* ── Leave management — any HR viewer OR leave view/approve role ── */}
@@ -494,6 +509,9 @@ function App() {
 
               {/* ── Staff self-service: leave — same PHP leave app as HR → Leave ── */}
               <Route path="/me/leave" element={<LeavePhpPage />} />
+
+              {/* ── Staff self-service: payslips — same PHP payroll app for every staff account ── */}
+              <Route path="/me/payslips" element={<MyPayslipsPhpPage />} />
 
               {/* ── Teacher (lecturer) self-service portal ──
                   Gated on ACCESS_TEACHER_PORTAL, NOT VIEW_MY_MODULES — the
@@ -893,6 +911,7 @@ function App() {
                   />
                 }
               >
+                <Route path="/finance/billing-system" element={<BillingPhpPage />} />
                 <Route path="/finance" element={<FinanceHub />}>
                   <Route index element={<FinanceOverviewPage />} />
                   <Route path="billing" element={<StudentBillingPage />} />
