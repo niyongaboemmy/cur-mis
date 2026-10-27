@@ -1,0 +1,280 @@
+name: Deploy — Production server (Nginx, self-hosted runner)
+
+# The production server (cur-svr, 10.10.93.183) sits on a private campus
+# network, so GitHub-hosted runners cannot reach it. Instead:
+#   1. build-* jobs run on GitHub-hosted runners and upload the build as an artifact
+#   2. deploy-* jobs run on the self-hosted runner ON the server (label cur-svr-prod,
+#      user `deploy`), copy the build into a fresh release dir and run
+#      /srv/cur-mis/bin/activate to swap the `current` symlink atomically.
+#
+# The repo is public, so the server runner must never run untrusted code:
+#   - this workflow has no pull_request trigger, and every deploy job re-checks
+#     that it runs for a push/dispatch on main of this repository
+#   - outside contributors' workflow runs need manual approval (repo setting)
+#   - the runner was registered with --no-default-labels, so only jobs that name
+#     `cur-svr-prod` can land on it
+#
+# Never touches the database. Migrations/seeds run separately (see DEPLOY_NGINX_SERVER.md §9).
+# Server setup and rollback: DEPLOY_NGINX_SERVER.md.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/**'
+      - 'frontend/**'
+      - 'file-server/**'
+      - 'payment_api/**'
+      - '.github/workflows/deploy-server.yml'
+  workflow_dispatch:
+    inputs:
+      component:
+        description: 'What to deploy'
+        type: choice
+        default: auto
+        options: [auto, all, backend, frontend, file_server, payment_api]
+
+concurrency:
+  group: deploy-server
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  APP_ROOT: /srv/cur-mis
+  # http://10.10.93.183 in Phase 1, https://cur.ac.rw in Phase 2 (repo variable)
+  SITE_URL: ${{ vars.SITE_URL }}
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      backend:     ${{ steps.pick.outputs.backend }}
+      frontend:    ${{ steps.pick.outputs.frontend }}
+      file_server: ${{ steps.pick.outputs.file_server }}
+      payment_api: ${{ steps.pick.outputs.payment_api }}
+      release:     ${{ steps.pick.outputs.release }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: changed
+        with:
+          filters: |
+            backend:     ['backend/**']
+            frontend:    ['frontend/**']
+            file_server: ['file-server/**']
+            payment_api: ['payment_api/**']
+            workflow:    ['.github/workflows/deploy-server.yml']
+      - id: pick
+        env:
+          C: ${{ inputs.component || 'auto' }}
+          WF: ${{ steps.changed.outputs.workflow }}
+        run: |
+          pick() {
+            if [ "$C" = all ] || [ "$C" = "$1" ] || { [ "$C" = auto ] && { [ "$2" = true ] || [ "$WF" = true ]; }; }
+            then echo "$1=true"; else echo "$1=false"; fi
+          }
+          {
+            pick backend     '${{ steps.changed.outputs.backend }}'
+            pick frontend    '${{ steps.changed.outputs.frontend }}'
+            pick file_server '${{ steps.changed.outputs.file_server }}'
+            pick payment_api '${{ steps.changed.outputs.payment_api }}'
+            echo "release=$(date -u +%Y%m%d%H%M%S)-${GITHUB_SHA::7}"
+          } >> "$GITHUB_OUTPUT"
+          cat "$GITHUB_OUTPUT"
+
+  # ── Build (GitHub-hosted) ──────────────────────────────────────────────────
+
+  build_backend:
+    needs: plan
+    if: needs.plan.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          tools: composer
+      - name: composer install
+        working-directory: backend
+        run: composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist
+      - name: Package
+        run: |
+          tar -czf backend.tgz -C backend \
+            --exclude='./.env' --exclude='./.env.*' --exclude='./logs' --exclude='./storage' \
+            --exclude='./docs' --exclude='./tests' --exclude='*.phar' --exclude='.htaccess' \
+            --exclude='./public/test_*.php' --exclude='./test_*.php' --exclude='./dev-server.php' \
+            --exclude='.DS_Store' .
+          du -sh backend.tgz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: backend
+          path: backend.tgz
+          retention-days: 3
+
+  build_frontend:
+    needs: plan
+    if: needs.plan.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Build
+        working-directory: frontend
+        env:
+          # Variables already set in the environment override frontend/.env.production in Vite
+          VITE_API_URL: ${{ vars.SITE_URL }}/umis/api
+          VITE_API_DOCS_URL: ${{ vars.SITE_URL }}/umis/api/api-docs.php
+        run: |
+          npm ci
+          npm run type-check
+          NODE_ENV=production npm run build
+      - name: Package
+        run: |
+          tar -czf frontend.tgz -C frontend/dist --exclude='.htaccess' --exclude='.DS_Store' .
+          du -sh frontend.tgz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: frontend
+          path: frontend.tgz
+          retention-days: 3
+
+  build_file_server:
+    needs: plan
+    if: needs.plan.outputs.file_server == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          tools: composer
+      - name: composer install
+        working-directory: file-server
+        run: composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist
+      - name: Package
+        run: |
+          tar -czf file-server.tgz -C file-server \
+            --exclude='./.env' --exclude='./.env.*' --exclude='./storage' --exclude='*.phar' \
+            --exclude='./test_upload.txt' --exclude='.htaccess' --exclude='.DS_Store' .
+          du -sh file-server.tgz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: file-server
+          path: file-server.tgz
+          retention-days: 3
+
+  build_payment_api:
+    needs: plan
+    if: needs.plan.outputs.payment_api == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Package
+        run: tar -czf payment_api.tgz -C payment_api --exclude='.htaccess' --exclude='.DS_Store' --exclude='*.log' .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: payment_api
+          path: payment_api.tgz
+          retention-days: 3
+
+  # ── Deploy (self-hosted runner on the production server) ───────────────────
+
+  deploy_backend:
+    needs: [plan, build_backend]
+    if: github.repository == 'niyongaboemmy/cur-mis' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: [self-hosted, cur-svr-prod]
+    env:
+      REL: ${{ needs.plan.outputs.release }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: backend
+          path: ${{ runner.temp }}/backend-artifact
+      - name: Unpack into new release
+        run: |
+          SRC="$RUNNER_TEMP/backend-src"; rm -rf "$SRC"; mkdir -p "$SRC"
+          tar -xzf "$RUNNER_TEMP/backend-artifact/backend.tgz" -C "$SRC"
+          # --checksum + --link-dest: files identical to the live release become hard links
+          rsync -a --checksum --delete --link-dest="$APP_ROOT/backend/current/" \
+            "$SRC/" "$APP_ROOT/backend/releases/$REL/"
+          rm -rf "$SRC" "$RUNNER_TEMP/backend-artifact"
+      - name: Activate
+        run: $APP_ROOT/bin/activate backend "$REL"
+      - name: Health check
+        run: |
+          for i in 1 2 3 4 5; do
+            curl -fsS "$SITE_URL/umis/api/api/health" && exit 0
+            sleep 3
+          done
+          echo "::error::API health check failed — roll back with: $APP_ROOT/bin/rollback backend"
+          exit 1
+
+  deploy_frontend:
+    needs: [plan, build_frontend]
+    if: github.repository == 'niyongaboemmy/cur-mis' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: [self-hosted, cur-svr-prod]
+    env:
+      REL: ${{ needs.plan.outputs.release }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: frontend
+          path: ${{ runner.temp }}/frontend-artifact
+      - name: Unpack into new release
+        run: |
+          mkdir -p "$APP_ROOT/frontend/releases/$REL"
+          tar -xzf "$RUNNER_TEMP/frontend-artifact/frontend.tgz" -C "$APP_ROOT/frontend/releases/$REL"
+          rm -rf "$RUNNER_TEMP/frontend-artifact"
+      - name: Activate
+        run: $APP_ROOT/bin/activate frontend "$REL"
+      - name: Smoke test
+        run: curl -fsS "$SITE_URL/umis/" | grep -q '<div id="root"'
+
+  deploy_file_server:
+    needs: [plan, build_file_server]
+    if: github.repository == 'niyongaboemmy/cur-mis' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: [self-hosted, cur-svr-prod]
+    env:
+      REL: ${{ needs.plan.outputs.release }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: file-server
+          path: ${{ runner.temp }}/fs-artifact
+      - name: Unpack into new release
+        run: |
+          SRC="$RUNNER_TEMP/fs-src"; rm -rf "$SRC"; mkdir -p "$SRC"
+          tar -xzf "$RUNNER_TEMP/fs-artifact/file-server.tgz" -C "$SRC"
+          rsync -a --checksum --delete --link-dest="$APP_ROOT/file-server/current/" \
+            "$SRC/" "$APP_ROOT/file-server/releases/$REL/"
+          rm -rf "$SRC" "$RUNNER_TEMP/fs-artifact"
+      - name: Activate
+        run: $APP_ROOT/bin/activate file-server "$REL"
+      - name: Smoke test (no 5xx)
+        run: |
+          code=$(curl -s -o /dev/null -w '%{http_code}' "$SITE_URL/umis/cdn/")
+          echo "HTTP $code"
+          [ "$code" != 000 ] && [ "$code" -lt 500 ]
+
+  deploy_payment_api:
+    needs: [plan, build_payment_api]
+    if: github.repository == 'niyongaboemmy/cur-mis' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: [self-hosted, cur-svr-prod]
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: payment_api
+          path: ${{ runner.temp }}/pay-artifact
+      - name: Sync in place (no --delete, so runtime logs are kept)
+        run: |
+          SRC="$RUNNER_TEMP/pay-src"; rm -rf "$SRC"; mkdir -p "$SRC"
+          tar -xzf "$RUNNER_TEMP/pay-artifact/payment_api.tgz" -C "$SRC"
+          rsync -a "$SRC/" "$APP_ROOT/payment_api/"
+          rm -rf "$SRC" "$RUNNER_TEMP/pay-artifact"
+          sudo /usr/bin/systemctl reload php8.4-fpm
