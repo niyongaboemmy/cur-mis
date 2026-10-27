@@ -12,7 +12,9 @@ name: Deploy — Production server (Nginx, self-hosted runner)
 #     that it runs for a push/dispatch on main of this repository
 #   - outside contributors' workflow runs need manual approval (repo setting)
 #   - the runner was registered with --no-default-labels, so only jobs that name
-#     `cur-svr-prod` can land on it
+#     `cur-svr-prod` can land on it. It has no `self-hosted` label, so deploy jobs
+#     must say `runs-on: cur-svr-prod` alone: a job only matches a runner that has
+#     every label it lists.
 #
 # Never touches the database. Migrations/seeds run separately (see DEPLOY_NGINX_SERVER.md §9).
 # Server setup and rollback: DEPLOY_NGINX_SERVER.md.
@@ -188,7 +190,7 @@ jobs:
   deploy_backend:
     needs: [plan, build_backend]
     if: github.repository == 'niyongaboemmy/cur-mis' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
-    runs-on: [self-hosted, cur-svr-prod]
+    runs-on: cur-svr-prod
     env:
       REL: ${{ needs.plan.outputs.release }}
     steps:
@@ -218,7 +220,7 @@ jobs:
   deploy_frontend:
     needs: [plan, build_frontend]
     if: github.repository == 'niyongaboemmy/cur-mis' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
-    runs-on: [self-hosted, cur-svr-prod]
+    runs-on: cur-svr-prod
     env:
       REL: ${{ needs.plan.outputs.release }}
     steps:
@@ -239,7 +241,7 @@ jobs:
   deploy_file_server:
     needs: [plan, build_file_server]
     if: github.repository == 'niyongaboemmy/cur-mis' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
-    runs-on: [self-hosted, cur-svr-prod]
+    runs-on: cur-svr-prod
     env:
       REL: ${{ needs.plan.outputs.release }}
     steps:
@@ -265,7 +267,7 @@ jobs:
   deploy_payment_api:
     needs: [plan, build_payment_api]
     if: github.repository == 'niyongaboemmy/cur-mis' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
-    runs-on: [self-hosted, cur-svr-prod]
+    runs-on: cur-svr-prod
     steps:
       - uses: actions/download-artifact@v4
         with:

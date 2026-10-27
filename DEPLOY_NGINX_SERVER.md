@@ -648,7 +648,7 @@ WorkingDirectory=%h/actions-runner
 ExecStart=%h/actions-runner/run.sh
 Restart=always
 RestartSec=10
-KillMode=process
+KillMode=control-group
 KillSignal=SIGTERM
 TimeoutStopSec=5min
 
