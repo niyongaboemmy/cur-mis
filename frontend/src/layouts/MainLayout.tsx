@@ -724,7 +724,7 @@ const NAV_TREE: NavNode[] = [
         permissions: [PERMISSIONS.VIEW_FINANCE_BILLING],
       },
       {
-        to: "/finance/structures",
+        to: "/finance/fee-rates-system",
         label: "Fee Rates",
         permissions: [PERMISSIONS.VIEW_FINANCE_STRUCTURES],
       },
@@ -1189,6 +1189,10 @@ const ROUTE_TITLES: Record<string, { title: string; sub?: string }> = {
   "/finance/dashboard-system": {
     title: "Finance Dashboard",
     sub: "Collection overview",
+  },
+  "/finance/fee-rates-system": {
+    title: "Fee Rates",
+    sub: "Fee amounts per type, year and department",
   },
   "/finance/structures": {
     title: "Fee Rates",

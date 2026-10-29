@@ -157,6 +157,7 @@ import StudentLedgerPage from "@/pages/finance/StudentLedgerPage";
 import StudentBillingPage from "@/pages/finance/StudentBillingPage";
 import BillingPhpPage from "@/pages/finance/BillingPhpPage";
 import DashboardPhpPage from "@/pages/finance/DashboardPhpPage";
+import FeeRatesPhpPage from "@/pages/finance/FeeRatesPhpPage";
 import PaymentApprovalsPage from "@/pages/finance/PaymentApprovalsPage";
 import BordereauVerificationPage from "@/pages/finance/BordereauVerificationPage";
 import FeeStructuresPage from "@/pages/finance/FeeStructuresPage";
@@ -914,6 +915,7 @@ function App() {
               >
                 <Route path="/finance/billing-system" element={<BillingPhpPage />} />
                 <Route path="/finance/dashboard-system" element={<DashboardPhpPage />} />
+                <Route path="/finance/fee-rates-system" element={<FeeRatesPhpPage />} />
                 <Route path="/finance" element={<FinanceHub />}>
                   <Route index element={<FinanceOverviewPage />} />
                   <Route path="billing" element={<StudentBillingPage />} />
