@@ -734,11 +734,6 @@ const NAV_TREE: NavNode[] = [
         permissions: [PERMISSIONS.VIEW_FINANCE_BURSARIES],
       },
       {
-        to: "/finance/reports",
-        label: "Reports",
-        permissions: [PERMISSIONS.VIEW_FINANCE_REPORTS],
-      },
-      {
         to: "/finance/fines",
         label: "Fines",
         permissions: [PERMISSIONS.VIEW_FINES, PERMISSIONS.MANAGE_FINES],
