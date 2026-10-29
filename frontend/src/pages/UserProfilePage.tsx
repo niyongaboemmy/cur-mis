@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import StaffSelfProfileCard from "@/components/staff/StaffSelfProfileCard";
 import { authService } from "@/services/authService";
 import { useAuthStore } from "@/store/authStore";
 
@@ -320,6 +321,11 @@ export default function UserProfilePage() {
           </button>
         </div>
       </form>
+
+      {/* Staff profile — staff accounts only; students and applicants have their own portals */}
+      {storeUser && !["student", "applicant"].includes(storeUser.role ?? "") && (
+        <StaffSelfProfileCard />
+      )}
 
       {/* Password form */}
       <form className="card p-5 space-y-4" onSubmit={onSubmitPassword}>
