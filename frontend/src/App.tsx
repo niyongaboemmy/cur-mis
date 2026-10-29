@@ -9,7 +9,6 @@ import { PERMISSIONS, LEAVE_STAGE_PERMISSIONS } from "@/constants/permissions";
 // ── Pages (direct imports — no lazy() to avoid chunk-load failures on cPanel) ──
 import WelcomePage from "@/pages/WelcomePage";
 import HomePage from "@/pages/HomePage";
-import RootRoute from "@/components/layout/RootRoute";
 import AdminDashboardPage from "@/pages/admin/AdminDashboardPage";
 import LoginPage from "@/pages/LoginPage";
 import RegisterPage from "@/pages/RegisterPage";
@@ -21,8 +20,6 @@ import ServiceCatalogManagementPage from "@/pages/admin/ServiceCatalogManagement
 import PermissionsManagementPage from "@/pages/admin/PermissionsManagementPage";
 import UsersManagementPage from "@/pages/admin/UsersManagementPage";
 import AcademicScopePage from "@/pages/admin/AcademicScopePage";
-import LecturerPlacementPage from "@/pages/admin/LecturerPlacementPage";
-import MyStudentsPage from "@/pages/teaching/MyStudentsPage";
 // University Modules
 import StudentsPage from "@/pages/StudentsPage";
 import StudentDetailsPage from "@/pages/StudentDetailsPage";
@@ -47,8 +44,15 @@ import AppraisalPage from "@/pages/hr/AppraisalPage";
 import HRImportExportPage from "@/pages/hr/HRImportExportPage";
 import SupervisorLeaveApprovalDashboard from "@/pages/hr/SupervisorLeaveApprovalDashboard";
 import PayrollManagementPage from "@/pages/hr/PayrollManagementPage";
+import PayrollDataQualityPage from "@/pages/hr/PayrollDataQualityPage";
+import PayrollRunsPage from "@/pages/hr/PayrollRunsPage";
+import PayrollRunDetailPage from "@/pages/hr/PayrollRunDetailPage";
+import PayrollSettingsPage from "@/pages/hr/PayrollSettingsPage";
+import EmployeePayrollProfilePage from "@/pages/hr/EmployeePayrollProfilePage";
 import PayrollPhpPage from "@/pages/hr/PayrollPhpPage";
 import LeavePhpPage from "@/pages/hr/LeavePhpPage";
+import MyPayslipsPhpPage from "@/pages/hr/MyPayslipsPhpPage";
+import PartTimePage from "@/pages/hr/PartTimePage";
 import ContractManagementPage from "@/pages/hr/ContractManagementPage";
 import HrMonitoringDashboard from "@/pages/hr/HrMonitoringDashboard";
 import PerformanceMonitoringPage from "@/pages/hr/PerformanceMonitoringPage";
@@ -148,6 +152,8 @@ import FinanceHub from "@/pages/finance/FinanceHub";
 import FinanceOverviewPage from "@/pages/finance/FinanceOverviewPage";
 import StudentLedgerPage from "@/pages/finance/StudentLedgerPage";
 import StudentBillingPage from "@/pages/finance/StudentBillingPage";
+import BillingPhpPage from "@/pages/finance/BillingPhpPage";
+import DashboardPhpPage from "@/pages/finance/DashboardPhpPage";
 import PaymentApprovalsPage from "@/pages/finance/PaymentApprovalsPage";
 import BordereauVerificationPage from "@/pages/finance/BordereauVerificationPage";
 import FeeStructuresPage from "@/pages/finance/FeeStructuresPage";
@@ -163,6 +169,7 @@ import ExpenseCategoriesPage from "@/pages/finance/ExpenseCategoriesPage";
 import FeeTypesPage from "@/pages/finance/FeeTypesPage";
 import PerCreditRatesPage from "@/pages/finance/PerCreditRatesPage";
 import AppFeeReconciliationPage from "@/pages/finance/AppFeeReconciliationPage";
+import AdmissionFeePaymentsPage from "@/pages/finance/AdmissionFeePaymentsPage";
 import ReceiptPdfPage from "@/pages/finance/ReceiptPdfPage";
 import MyFinancePage from "@/pages/finance/MyFinancePage";
 import FinesManagementPage from "@/pages/finance/FinesManagementPage";
@@ -206,7 +213,7 @@ function App() {
           <Route element={<ProtectedRoute />}>
             <Route element={<MainLayout />}>
               {/* Free to all authenticated users */}
-              <Route path="/" element={<RootRoute />} />
+              <Route path="/" element={<WelcomePage />} />
               <Route path="/welcome" element={<WelcomePage />} />
               <Route
                 element={
@@ -218,8 +225,6 @@ function App() {
                 <Route path="/dashboard" element={<AdminDashboardPage />} />
               </Route>
               <Route path="/home" element={<HomePage />} />
-              <Route path="/lecturers" element={<LecturerPlacementPage />} />
-              <Route path="/my-students" element={<MyStudentsPage />} />
               <Route path="/profile" element={<UserProfilePage />} />
               <Route path="/my/service-requests" element={<MyServiceRequestsPage />} />
 
@@ -431,6 +436,13 @@ function App() {
                 <Route path="/hr/payroll" element={<PayrollPage />} />
                 <Route path="/hr/payroll/:id" element={<PayrollSlipPage />} />
                 <Route path="/hr/payroll-management" element={<PayrollManagementPage />} />
+                <Route path="/hr/payroll-data-quality" element={<PayrollDataQualityPage />} />
+                <Route path="/hr/payroll-runs" element={<PayrollRunsPage />} />
+                <Route path="/hr/payroll-runs/:id" element={<PayrollRunDetailPage />} />
+                <Route path="/hr/payroll-settings" element={<PayrollSettingsPage />} />
+                <Route path="/hr/payroll-profile" element={<EmployeePayrollProfilePage />} />
+                <Route path="/hr/payroll-profile/:employeeId" element={<EmployeePayrollProfilePage />} />
+                <Route path="/hr/part-time" element={<PartTimePage />} />
                 <Route path="/hr/payments" element={<PaymentsPage />} />
                 <Route path="/hr/payroll-system" element={<PayrollPhpPage />} />
               </Route>
@@ -494,6 +506,9 @@ function App() {
 
               {/* ── Staff self-service: leave — same PHP leave app as HR → Leave ── */}
               <Route path="/me/leave" element={<LeavePhpPage />} />
+
+              {/* ── Staff self-service: payslips — same PHP payroll app for every staff account ── */}
+              <Route path="/me/payslips" element={<MyPayslipsPhpPage />} />
 
               {/* ── Teacher (lecturer) self-service portal ──
                   Gated on ACCESS_TEACHER_PORTAL, NOT VIEW_MY_MODULES — the
@@ -893,6 +908,8 @@ function App() {
                   />
                 }
               >
+                <Route path="/finance/billing-system" element={<BillingPhpPage />} />
+                <Route path="/finance/dashboard-system" element={<DashboardPhpPage />} />
                 <Route path="/finance" element={<FinanceHub />}>
                   <Route index element={<FinanceOverviewPage />} />
                   <Route path="billing" element={<StudentBillingPage />} />
@@ -942,6 +959,7 @@ function App() {
                   <Route path="refunds" element={<RefundsPage />} />
                   <Route path="reports" element={<RevenueReportPage />} />
                   <Route path="app-fee-reconciliation" element={<AppFeeReconciliationPage />} />
+                  <Route path="admission-fee-payments" element={<AdmissionFeePaymentsPage />} />
                   <Route
                     element={
                       <ProtectedRoute

@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controllers;
 
+use Core\Database;
 use Core\Request;
 use Core\Response;
-use Core\Database;
 use App\Models\RoomModel;
 use App\Models\DepartmentModel;
 use App\Models\OptionModel;

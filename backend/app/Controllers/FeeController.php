@@ -356,10 +356,21 @@ class FeeController extends BaseController
         // reversal only cancels one of the two.
         $allPayments = array_merge($misPayments['data'] ?? [], $this->dedupeLegacyPayments($misPayments['data'] ?? [], $legacyPayments));
 
+        // Money received but not yet posted against any invoice. Non-zero means
+        // the invoices under-state what the student has paid. `blocked` means
+        // the invoices already hold money with no payment row behind it, so the
+        // money cannot be applied automatically until someone reconciles it.
+        $unallocated = $this->service->findUnallocatedReceipts($studentId);
+
         $this->success($response, [
             'invoices'      => $invoices,
             'payments'      => $allPayments,
             'totals'        => $totals,
+            'unallocated'   => [
+                'amount'  => round(array_sum(array_column($unallocated, 'amount')), 2),
+                'count'   => count($unallocated),
+                'blocked' => $this->service->unbackedInvoicePayments($studentId) > 0.009,
+            ],
             '_debug'        => [
                 'v'                  => 'v2-legacy',
                 'queried_regnumber'  => $studentId,
@@ -367,6 +378,65 @@ class FeeController extends BaseController
                 'legacy_error'       => $legacyError,
             ],
         ], 'Student ledger v2.');
+    }
+
+    /**
+     * POST /api/finance/payments/allocate-unapplied
+     *
+     * Post the student's received-but-unallocated money (UrubutoPay, mobile
+     * money and legacy ledger receipts) against their open invoices, in queue
+     * order, so the invoices show what was actually paid.
+     *
+     * Body: { student_id }
+     */
+    public function allocateUnappliedPayments(Request $request, Response $response): never
+    {
+        $data  = $request->body();
+        $actor = $request->param('_auth_user');
+
+        $errors = ValidationHelper::validate($data, [
+            'student_id' => 'required',
+        ]);
+        if (!empty($errors)) {
+            $this->error($response, 'Validation failed.', 422, $errors);
+        }
+
+        $studentId = (string) $data['student_id'];
+
+        try {
+            $result = $this->service->allocateUnappliedReceipts($studentId, (int) $actor['id']);
+        } catch (\RuntimeException $e) {
+            $this->error($response, $e->getMessage(), 422);
+        }
+
+        foreach ($result['academic_year_ids'] as $yearId) {
+            try {
+                $this->clearanceService->computeAndSave($studentId, $yearId, null, 0);
+            } catch (\Throwable $e) {
+                error_log('[Clearance ERROR] allocateUnappliedPayments: ' . $e->getMessage());
+            }
+        }
+
+        SystemLogService::log(
+            'CREATE',
+            'FINANCE',
+            sprintf(
+                'Allocated %s RWF of received payments across %d invoice line(s) for %s.',
+                number_format($result['applied'], 0),
+                count($result['allocations']),
+                $studentId
+            ),
+            null,
+            'fee_payment',
+            $result,
+            (array) $actor ?: null
+        );
+
+        $message = $result['receipts'] === 0
+            ? 'No unallocated payments were found for this student.'
+            : sprintf('Applied %s RWF to %d invoice line(s).', number_format($result['applied'], 0), count($result['allocations']));
+
+        $this->success($response, $result, $message);
     }
 
     /**
@@ -2103,8 +2173,37 @@ class FeeController extends BaseController
             $this->error($response, 'No transaction ID on file for this claim.', 422);
         }
 
+        $reference = (string)$app['claimed_transaction_id'];
+        $amount    = (float)($app['payment_amount'] ?? 0);
+        $billing   = new \App\Services\AdmissionBillingService();
+
+        // Book the claimed money onto the open admission bills first. If that
+        // fails the claim stays pending, so finance never approves a payment
+        // that the bills do not show as paid.
+        $booking = null;
+        if ($billing->hasOpenBills($id)) {
+            if ($amount <= 0) {
+                $this->error($response, 'The claimed amount is missing, so it cannot be applied to the admission fees.', 422);
+            }
+
+            $booking = $billing->applyGatewayPayment(
+                $app,
+                $reference,
+                $amount,
+                (string)($app['payment_currency'] ?: 'RWF'),
+                date('Y-m-d H:i:s'),
+                '',
+                'MANUAL',
+                (int)($actor['id'] ?? 0) ?: null
+            );
+
+            if ($booking['status'] === 'error') {
+                $this->error($response, $booking['message'], 422);
+            }
+        }
+
         $this->applicationModel->update($id, [
-            'transaction_id'            => $app['claimed_transaction_id'],
+            'transaction_id'            => $reference,
             'paid_at'                   => date('Y-m-d H:i:s'),
             'payment_verification_status' => 'approved',
             'verified_by'               => $actor['id'] ?? null,
@@ -2114,14 +2213,27 @@ class FeeController extends BaseController
         SystemLogService::log(
             'APPROVE',
             'FINANCE',
-            "Approved applicant payment for application {$app['application_number']} (ID {$id}), transaction {$app['claimed_transaction_id']}.",
+            "Approved applicant payment for application {$app['application_number']} (ID {$id}), transaction {$reference}.",
             $id,
             'student_application',
-            ['transaction_id' => $app['claimed_transaction_id'], 'amount' => $app['payment_amount'] ?? 5000],
+            ['transaction_id' => $reference, 'amount' => $amount, 'booking' => $booking['status'] ?? 'no_open_bills'],
             (array)$actor ?: null
         );
 
-        $this->success($response, null, 'Application payment approved.');
+        // Tell finance where the applicant now stands, so nobody has to open
+        // the bills screen to find out whether the payment landed.
+        $summary = (new \App\Models\ApplicationInvoiceModel())->summaryFor($id);
+        $message = $booking === null
+            ? 'Application payment approved. No admission bills are open for this application.'
+            : 'Application payment approved and booked onto the admission bills. Paid '
+                . number_format($summary['total_paid'], 0) . ' of ' . number_format($summary['total_due'], 0)
+                . ' RWF; balance ' . number_format($summary['balance'], 0) . ' RWF'
+                . ($summary['fully_paid'] ? ' — fully paid.' : '.');
+
+        $this->success($response, [
+            'booking' => $booking['status'] ?? null,
+            'summary' => $summary,
+        ], $message);
     }
 
     /**
@@ -2898,6 +3010,23 @@ class FeeController extends BaseController
     public function applicationFeeReconciliation(Request $request, Response $response): never
     {
         $this->success($response, [], 'Application fee reconciliation report.');
+    }
+
+    /**
+     * GET /api/finance/reports/admission-fee-payments
+     * Every Registration / CURSU payment an applicant has made, enrolled or not.
+     * Query: academic_year_id (optional), page, per_page.
+     */
+    public function listAdmissionFeePayments(Request $request, Response $response): never
+    {
+        $yearId  = (int)($request->query('academic_year_id') ?? 0);
+        $page    = max(1, (int)($request->query('page') ?? 1));
+        $perPage = (int)($request->query('per_page') ?? 50);
+
+        $report = (new \App\Services\AdmissionBillingService())
+            ->financePaymentsReport($yearId ?: null, $page, $perPage);
+
+        $this->success($response, $report, 'Admission fee payments.');
     }
 
     /**

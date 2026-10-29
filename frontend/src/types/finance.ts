@@ -242,6 +242,24 @@ export interface StudentLedger {
   invoices: FeeInvoice[]
   payments: FeePayment[]
   totals:   LedgerTotals
+  /** Received money (UrubutoPay, mobile money, legacy ledger) not yet posted to any invoice. */
+  unallocated?: { amount: number; count: number; blocked: boolean }
+}
+
+export interface AllocateUnappliedResult {
+  receipts:          number
+  applied:           number
+  unallocated:       number
+  academic_year_ids: number[]
+  allocations: {
+    invoice_id:       number
+    invoice_number:   string
+    fee_type:         string
+    academic_year_id: number
+    amount:           number
+    reference:        string
+    receipt_number:   string
+  }[]
 }
 
 // ─── Dashboard / Summary ──────────────────────────────────────────────────────

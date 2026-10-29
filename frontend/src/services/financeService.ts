@@ -9,6 +9,7 @@ import type {
   FeeBursary,
   ReceiptData,
   StudentLedger,
+  AllocateUnappliedResult,
   FinanceSummary,
   RevenueByType,
   CreateFeeStructurePayload,
@@ -109,6 +110,12 @@ export const ledgerService = {
       { student_id: studentId, ...params },
       signal,
     ),
+
+  /** Post the student's received-but-unallocated money against their open invoices. */
+  allocateUnappliedPayments: (studentId: string) =>
+    api.post<AllocateUnappliedResult>("/finance/payments/allocate-unapplied", {
+      student_id: studentId,
+    }),
 
   generateInvoices: (studentId: string, data: GenerateInvoicesPayload) =>
     api.post<GenerateInvoicesResult>("/finance/students/generate", {
@@ -933,6 +940,45 @@ export const appFeeReconciliationService = {
       data,
     ),
 };
+
+export interface AdmissionFeePaymentRow {
+  id:                   number
+  paid_at:              string
+  application_id:       number
+  application_number:   string
+  applicant_name:       string
+  email:                string
+  fee_type:             string
+  label:                string
+  amount:               number
+  amount_due:           number
+  currency:             string
+  reference_number:     string
+  receipt_number:       string
+  payment_method:       string
+  source:               string
+  bill_status:          string
+  application_status:   string
+  enrolled_student_id:  string | null
+}
+
+export interface AdmissionFeePaymentsResponse {
+  summary: { count: number; total_amount: number; applicants: number }
+  rows: AdmissionFeePaymentRow[]
+  pagination: { current_page: number; per_page: number; total: number; last_page: number }
+}
+
+export const admissionFeePaymentsService = {
+  list: (
+    params: { academic_year_id?: number; page?: number; per_page?: number },
+    signal?: AbortSignal,
+  ) =>
+    api.get<AdmissionFeePaymentsResponse>(
+      '/finance/reports/admission-fee-payments',
+      params,
+      signal,
+    ),
+}
 
 export const feeInvoicePdfService = {
   downloadInvoicePdf: async (invoiceId: number) => {
