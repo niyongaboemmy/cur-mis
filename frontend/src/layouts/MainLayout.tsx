@@ -280,13 +280,21 @@ const NAV_TREE: NavNode[] = [
     hideForRoles: ["student", "applicant"],
   },
   {
-    // Self-service leave — opens the same PHP leave app as HR → Leave, for every
-    // staff account. Hidden from students/applicants.
+    // Self-service leave for every staff account. Hidden from students/applicants.
     id: "my-leave",
     label: "My Leave",
     icon: CalendarDays,
-    to: "/me/leave",
     hideForRoles: ["student", "applicant"],
+    children: [
+      {
+        to: "/me/leave",
+        label: "My requests",
+      },
+      {
+        to: "/me/leave-requests",
+        label: "All requests & Approval",
+      },
+    ],
   },
   {
     id: "students-group",
@@ -1108,6 +1116,10 @@ const ROUTE_TITLES: Record<string, { title: string; sub?: string }> = {
   "/me/leave": {
     title: "My Leave",
     sub: "Request leave and track your own requests",
+  },
+  "/me/leave-requests": {
+    title: "All requests & Approval",
+    sub: "Leave requests and approvals",
   },
   "/notifications": {
     title: "Notifications",
