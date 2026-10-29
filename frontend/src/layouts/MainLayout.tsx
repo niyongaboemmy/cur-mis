@@ -705,7 +705,7 @@ const NAV_TREE: NavNode[] = [
     hideForRoles: ["student", "applicant"],
     children: [
       {
-        to: "/finance",
+        to: "/finance/dashboard-system",
         label: "Overview",
         permissions: [PERMISSIONS.VIEW_FINANCE_OVERVIEW],
       },
@@ -1195,6 +1195,10 @@ const ROUTE_TITLES: Record<string, { title: string; sub?: string }> = {
   "/finance/billing-system": {
     title: "Billing",
     sub: "Billing system",
+  },
+  "/finance/dashboard-system": {
+    title: "Finance Dashboard",
+    sub: "Collection overview",
   },
   "/finance/structures": {
     title: "Fee Rates",
