@@ -284,17 +284,17 @@ const NAV_TREE: NavNode[] = [
     id: "my-leave",
     label: "My Leave",
     icon: CalendarDays,
+    to: "/me/leave",
     hideForRoles: ["student", "applicant"],
-    children: [
-      {
-        to: "/me/leave",
-        label: "My requests",
-      },
-      {
-        to: "/me/leave-requests",
-        label: "All requests & Approval",
-      },
-    ],
+  },
+  {
+    // Leave requests and approvals for every staff account. Hidden from
+    // students/applicants.
+    id: "leave-requests",
+    label: "All requests & Approval",
+    icon: CalendarDays,
+    to: "/me/leave-requests",
+    hideForRoles: ["student", "applicant"],
   },
   {
     id: "students-group",
