@@ -1,7 +1,7 @@
 // Hosts the standalone PHP finance application inside the MIS shell.
 // The iframe fills the whole <main> area: negative margins cancel the page
 // gutters from MainLayout, and h-full uses the column height it provides.
-const BILLING_PHP_URL = "https://cur.ac.rw/umis/finance/home.php";
+const BILLING_PHP_URL = "https://cur.ac.rw/umis/finance/billing/bill_students.php";
 
 export default function BillingPhpPage() {
   return (
