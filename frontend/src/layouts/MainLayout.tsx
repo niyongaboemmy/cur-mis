@@ -739,11 +739,6 @@ const NAV_TREE: NavNode[] = [
         permissions: [PERMISSIONS.VIEW_FINES, PERMISSIONS.MANAGE_FINES],
       },
       {
-        to: "/finance/overdue-alerts",
-        label: "Overdue Alerts",
-        permissions: [PERMISSIONS.SEND_FEE_ALERTS, PERMISSIONS.MANAGE_FINANCE],
-      },
-      {
         to: "/registrar/report",
         label: "Academic Reports",
         permissions: [PERMISSIONS.VIEW_FINANCE],
