@@ -228,45 +228,38 @@ const NAV_TREE: NavNode[] = [
     permissions: [PERMISSIONS.ACCESS_APPLICANT_PORTAL],
   },
   {
-    // Teacher workspace. Gated on ACCESS_TEACHER_PORTAL rather than
-    // VIEW_MY_MODULES, because the `student` role holds VIEW_MY_MODULES too and
-    // would otherwise see a teaching menu. Every page is additionally scoped
-    // server-side to the lecturer's own module assignments.
+    // Teacher workspace, open to every staff account. Students and applicants
+    // are hidden, since they have their own portals. Every page is scoped
+    // server-side to the signed-in person's own module assignments.
     id: "my-teaching",
     label: "My Teaching",
     icon: Presentation,
-    permissions: [PERMISSIONS.ACCESS_TEACHER_PORTAL],
-    showWhenTeaching: true,
+    hideForRoles: ["student", "applicant"],
     children: [
       {
         to: "/teacher",
         label: "Dashboard",
-        permissions: [PERMISSIONS.ACCESS_TEACHER_PORTAL],
-        showWhenTeaching: true,
+        hideForRoles: ["student", "applicant"],
       },
       {
         to: "/teacher/courses",
         label: "My courses",
-        permissions: [PERMISSIONS.ACCESS_TEACHER_PORTAL],
-        showWhenTeaching: true,
+        hideForRoles: ["student", "applicant"],
       },
       {
         to: "/teacher/calendar",
         label: "My calendar",
-        permissions: [PERMISSIONS.ACCESS_TEACHER_PORTAL],
-        showWhenTeaching: true,
+        hideForRoles: ["student", "applicant"],
       },
       {
         to: "/teacher/exams",
         label: "My exams",
-        permissions: [PERMISSIONS.ACCESS_TEACHER_PORTAL],
-        showWhenTeaching: true,
+        hideForRoles: ["student", "applicant"],
       },
       {
         to: "/my-students",
         label: "My students",
-        permissions: [PERMISSIONS.ACCESS_TEACHER_PORTAL],
-        showWhenTeaching: true,
+        hideForRoles: ["student", "applicant"],
       },
       {
         to: "/attendance",

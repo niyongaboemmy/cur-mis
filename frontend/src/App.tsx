@@ -522,10 +522,7 @@ function App() {
                   assignments (App\Helpers\LecturerScope). */}
               <Route
                 element={
-                  <ProtectedRoute
-                    requiredPermissions={PERMISSIONS.ACCESS_TEACHER_PORTAL}
-                    allowWhenTeaching
-                  />
+                  <ProtectedRoute allowStaff />
                 }
               >
                 <Route path="/teacher" element={<TeacherDashboardPage />} />
