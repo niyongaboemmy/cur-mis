@@ -38,6 +38,7 @@ export default function AcademicScopePage() {
   const requestsQ = useQuery({
     queryKey: ["academic-scope", "requests", "pending"],
     queryFn: () => academicScopeService.requests("pending"),
+    retry: false,
   });
   const pendingRaw: any = requestsQ.data;
   const pending: ScopeRequest[] = pendingRaw?.data ?? pendingRaw ?? [];
@@ -191,7 +192,17 @@ export default function AcademicScopePage() {
           Pending requests ({pending.length})
           {pending.length > 0 && <span className="ml-2 text-xs font-medium text-amber-700">Waiting for your decision</span>}
         </h2>
-        {pending.length === 0 && (
+        {requestsQ.isError && (
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm text-red-600">
+              Could not load pending requests. {(requestsQ.error as any)?.message ?? ""}
+            </p>
+            <button type="button" className="btn-secondary" onClick={() => requestsQ.refetch()}>
+              Retry
+            </button>
+          </div>
+        )}
+        {!requestsQ.isError && pending.length === 0 && (
           <p className="text-sm text-gray-500">No Dean or HOD is waiting for approval.</p>
         )}
         <ul className="divide-y">
