@@ -753,7 +753,7 @@ class AdmissionBillingService
         int    $billId,
         float  $amount,
         string $reference,
-        int    $actorId,
+        ?int   $actorId,
         ?string $notes = null
     ): array {
         $application = $this->applications->find($applicationId);
@@ -802,7 +802,7 @@ class AdmissionBillingService
             'receipt_number'         => $receipt,
             'service_code'           => $bill['service_code'] ?: null,
             'source'                 => 'MANUAL',
-            'recorded_by'            => $actorId,
+            'recorded_by'            => $actorId ?: null,
             'notes'                  => $notes !== null && trim($notes) !== '' ? mb_substr(trim($notes), 0, 255) : null,
             'paid_at'                => $paidAt,
         ]);
@@ -835,6 +835,85 @@ class AdmissionBillingService
         }
 
         return ['payment_id' => $paymentId, 'receipt_number' => $receipt, 'summary' => $summary];
+    }
+
+    /**
+     * Settle admission bills from approved bordereau (bank deposit) submissions.
+     *
+     * Approving a bordereau marks the application paid, but on its own it leaves
+     * the admission bills open, so the enrollment gate keeps refusing an applicant
+     * who has paid. This applies each approved amount to the open bills, oldest
+     * first, through recordManualPayment() so the bill and the payment ledger
+     * move together.
+     *
+     * Idempotent: the payments it books are referenced BDX-{submissionId}-{n}, and
+     * a re-run only applies what is not yet booked. Any amount left once every bill
+     * is settled stays unapplied and is reported back.
+     *
+     * @return list<array{submission_id:int,applied:float,unapplied:float}>
+     */
+    public function allocateApprovedBordereaux(int $applicationId, ?int $actorId = null): array
+    {
+        $submissions = $this->db->fetchAll(
+            "SELECT id, amount, receipt_number, reviewed_by
+               FROM `bordereau_submissions`
+              WHERE application_id = ? AND status = 'approved'
+              ORDER BY id ASC",
+            [$applicationId]
+        );
+
+        $results = [];
+        foreach ($submissions as $submission) {
+            $submissionId = (int)$submission['id'];
+            $prefix       = 'BDX-' . $submissionId . '-';
+
+            $booked = $this->db->fetchOne(
+                "SELECT COUNT(*) AS cnt, COALESCE(SUM(amount), 0) AS total
+                   FROM `application_invoice_payments`
+                  WHERE application_id = ? AND reference_number LIKE ?",
+                [$applicationId, $prefix . '%']
+            ) ?: [];
+
+            $sequence  = (int)($booked['cnt'] ?? 0);
+            $remaining = round((float)$submission['amount'] - (float)($booked['total'] ?? 0), 2);
+            $recorder  = (int)($submission['reviewed_by'] ?? 0) ?: $actorId;
+            $applied   = 0.0;
+
+            while ($remaining > 0.009) {
+                $open = $this->invoices->openForApplication($applicationId);
+                if ($open === []) {
+                    break;
+                }
+
+                $bill = $open[0];
+                $gap  = round((float)$bill['amount_due'] - (float)$bill['amount_paid'], 2);
+                $take = min($remaining, $gap);
+                if ($take <= 0.009) {
+                    break;
+                }
+
+                $sequence++;
+                $this->recordManualPayment(
+                    $applicationId,
+                    (int)$bill['id'],
+                    $take,
+                    $prefix . $sequence,
+                    $recorder,
+                    'Bordereau ' . (string)$submission['receipt_number'] . ' approved'
+                );
+
+                $remaining = round($remaining - $take, 2);
+                $applied  += $take;
+            }
+
+            $results[] = [
+                'submission_id' => $submissionId,
+                'applied'       => round($applied, 2),
+                'unapplied'     => max(0.0, $remaining),
+            ];
+        }
+
+        return $results;
     }
 
     private function generateReceiptNumber(): string

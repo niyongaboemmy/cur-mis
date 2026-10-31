@@ -298,6 +298,14 @@ class AdmissionController extends BaseController
         $authUser = $request->param('_auth_user');
         $actorId  = (int)($authUser['id'] ?? 0);
 
+        $offer = $this->offerModel->getWithApplication($offerId);
+        if ($offer) {
+            $this->settleBordereauDeposits((int)$offer['application_id'], $actorId);
+            if ((int)$this->offerModel->getWithApplication($offerId)['enrollment_initiated'] === 1) {
+                $this->success($response, ['offer_id' => $offerId, 'enrolled' => true], 'Enrollment initiated successfully.', 201);
+            }
+        }
+
         try {
             $result = $this->service->initiateEnrollment($offerId, $actorId);
         } catch (\RuntimeException $e) {
@@ -321,6 +329,17 @@ class AdmissionController extends BaseController
         $offer = $this->offerModel->findByApplicationId($appId);
         if (!$offer) {
             $this->error($response, 'No active admission offer found for this application.', 404);
+        }
+
+        // Settle approved bank deposits onto the bills first, so an applicant who
+        // paid by bordereau is not refused here.
+        $this->settleBordereauDeposits($appId, $actorId);
+
+        // Settling the last bill enrolls the applicant automatically, so re-read the
+        // offer: enrolling again would only be refused as already initiated.
+        $offer = $this->offerModel->findByApplicationId($appId);
+        if ((int)$offer['enrollment_initiated'] === 1) {
+            $this->success($response, ['offer_id' => (int)$offer['id'], 'enrolled' => true], 'Enrollment initiated successfully.', 201);
         }
 
         try {
@@ -606,6 +625,20 @@ class AdmissionController extends BaseController
      * exemption letter hasn't been confirmed by both registry and finance.
      * Bails with a 422 error response when blocked.
      */
+    /**
+     * Apply approved bordereau deposits to the admission bills before enrollment is
+     * checked. Best-effort: a failure is logged, and the enrollment gate then reports
+     * the balance as it stands.
+     */
+    private function settleBordereauDeposits(int $applicationId, int $actorId): void
+    {
+        try {
+            (new AdmissionBillingService())->allocateApprovedBordereaux($applicationId, $actorId);
+        } catch (\Throwable $e) {
+            error_log('[AdmissionController] bordereau settlement failed for application ' . $applicationId . ': ' . $e->getMessage());
+        }
+    }
+
     private function assertExemptionLetterConfirmedForOffer(Response $response, int $offerId): void
     {
         $row = Database::getInstance()->fetchOne(
