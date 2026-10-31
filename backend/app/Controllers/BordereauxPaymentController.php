@@ -235,7 +235,10 @@ class BordereauxPaymentController
                     sa.first_name,
                     sa.last_name,
                     sa.application_number AS application_reference,
-                    sa.amount as required_amount,
+                    COALESCE((
+                        SELECT SUM(ai.amount_due) FROM application_invoices ai
+                         WHERE ai.application_id = sa.id AND ai.status <> 'cancelled'
+                    ), 0) AS required_amount,
                     bvr.is_read
                  FROM bordereau_submissions bs
                  JOIN student_applications sa ON sa.id = bs.application_id
