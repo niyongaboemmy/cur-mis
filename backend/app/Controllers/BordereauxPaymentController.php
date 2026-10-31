@@ -234,7 +234,7 @@ class BordereauxPaymentController
                     bs.created_at,
                     sa.first_name,
                     sa.last_name,
-                    sa.application_reference,
+                    sa.application_number AS application_reference,
                     sa.amount as required_amount,
                     bvr.is_read
                  FROM bordereau_submissions bs
