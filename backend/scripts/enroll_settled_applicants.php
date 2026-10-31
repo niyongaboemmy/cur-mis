@@ -98,6 +98,22 @@ foreach ($candidates as $row) {
     if (!$summary['fully_paid']) {
         $owing++;
         printf("  %s owes %s RWF, skipped\n", $label, number_format((float)$summary['balance'], 0));
+
+        $pending = $db->fetchOne(
+            "SELECT COUNT(*) AS cnt, COALESCE(SUM(amount), 0) AS total
+               FROM `bordereau_submissions`
+              WHERE application_id = ? AND status = 'pending'",
+            [$appId]
+        ) ?: [];
+        if ((int)($pending['cnt'] ?? 0) > 0) {
+            printf(
+                "      %d pending deposit(s) totalling %s RWF await Finance approval\n",
+                (int)$pending['cnt'],
+                number_format((float)$pending['total'], 0)
+            );
+        } else {
+            echo "      no pending deposit: the balance has not been paid or recorded\n";
+        }
         continue;
     }
 
