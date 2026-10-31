@@ -2,6 +2,7 @@
 
 namespace App\Controllers;
 
+use App\Constants\Permissions;
 use App\Models\DB;
 use App\Services\AdmissionBillingService;
 use DateTime;
@@ -209,7 +210,7 @@ class BordereauxPaymentController
             return;
         }
 
-        if (!hasPermission("view_bordereau_{$role}_verification")) {
+        if (!hasPermission(Permissions::VIEW_FINANCE_APPROVALS)) {
             jsonResponse(['error' => 'Unauthorized'], 403);
             return;
         }
@@ -273,7 +274,7 @@ class BordereauxPaymentController
             return;
         }
 
-        if (!hasPermission('approve_bordereau_payment')) {
+        if (!hasPermission(Permissions::VIEW_FINANCE_APPROVALS)) {
             jsonResponse(['error' => 'Unauthorized'], 403);
             return;
         }
@@ -365,7 +366,7 @@ class BordereauxPaymentController
             return;
         }
 
-        if (!hasPermission('approve_bordereau_payment')) {
+        if (!hasPermission(Permissions::VIEW_FINANCE_APPROVALS)) {
             jsonResponse(['error' => 'Unauthorized'], 403);
             return;
         }
@@ -433,7 +434,7 @@ class BordereauxPaymentController
      */
     public function getDashboardStats()
     {
-        if (!hasPermission('view_bordereau_finance_verification')) {
+        if (!hasPermission(Permissions::VIEW_FINANCE_APPROVALS)) {
             jsonResponse(['error' => 'Unauthorized'], 403);
             return;
         }
