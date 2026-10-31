@@ -1,0 +1,67 @@
+name: Admissions — settle deposits and issue registration numbers
+
+# Manual only. Runs on the production server, against the live database, using the
+# server's own backend/.env. Run it with mode "dry-run" first and read the output.
+# "apply" writes: it books approved bordereau deposits onto admission bills and
+# enrolls every applicant whose admission fees are fully paid.
+#
+# Pending bordereau deposits are never approved here. Finance still verifies those.
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'dry-run lists what would change; apply writes to the database'
+        type: choice
+        options: [dry-run, apply]
+        default: dry-run
+      application:
+        description: 'Optional application number, e.g. APP-2026-01351. Blank means every applicant.'
+        required: false
+        default: ''
+
+concurrency:
+  group: admissions-settle-enroll
+  cancel-in-progress: false
+
+jobs:
+  settle-and-enroll:
+    name: Settle deposits and enroll paid applicants
+    runs-on: cur-svr-prod
+    timeout-minutes: 30
+    env:
+      APP_ROOT: /srv/cur-mis
+      MODE: ${{ inputs.mode }}
+      APPLICATION: ${{ inputs.application }}
+    steps:
+      - name: Confirm the live release has the settlement code
+        run: |
+          set -euo pipefail
+          REL="$APP_ROOT/backend/current"
+          if ! grep -q "function enrollIfSettled" "$REL/app/Services/AdmissionBillingService.php"; then
+            echo "The release at $REL does not have enrollIfSettled yet."
+            echo "Wait for the Backend deploy to finish, then run this again."
+            exit 1
+          fi
+          echo "Release OK: $REL"
+
+      - name: Settle approved deposits, then enroll paid applicants
+        run: |
+          set -euo pipefail
+          cd "$APP_ROOT/backend/current"
+
+          FLAG=""
+          if [ "$MODE" = "apply" ]; then FLAG="--apply"; fi
+          APP_ARG=""
+          if [ -n "$APPLICATION" ]; then APP_ARG="--application=$APPLICATION"; fi
+
+          echo "== Mode: $MODE   Application: ${APPLICATION:-all}"
+          php -v | head -1
+
+          echo ""
+          echo "== Step 1: approved bordereau deposits onto admission bills"
+          php scripts/backfill_bordereau_allocations.php $FLAG $APP_ARG
+
+          echo ""
+          echo "== Step 2: enroll applicants whose admission fees are fully paid"
+          php scripts/enroll_settled_applicants.php $FLAG $APP_ARG
