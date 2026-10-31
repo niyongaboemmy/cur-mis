@@ -32,6 +32,13 @@ const TABS = [
     permissions: [PERMISSIONS.VIEW_FINANCE_OVERVIEW],
   },
   {
+    to: "/finance/billing-system",
+    label: "Billing",
+    icon: Receipt,
+    end: false,
+    permissions: [PERMISSIONS.VIEW_FINANCE_BILLING],
+  },
+  {
     to: "/finance/fee-types",
     label: "Fee Types",
     icon: Tag,
@@ -138,6 +145,13 @@ const TABS = [
     icon: GitMerge,
     end: false,
     permissions: [PERMISSIONS.MANAGE_FINANCE],
+  },
+  {
+    to: "/finance/admission-fee-payments",
+    label: "Admission Fee Payments",
+    icon: Receipt,
+    end: false,
+    permissions: [PERMISSIONS.VIEW_FINANCE],
   },
   {
     to: "/finance/documents",

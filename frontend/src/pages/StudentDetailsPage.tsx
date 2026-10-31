@@ -4718,9 +4718,22 @@ function StudentFinanceTab({
     enabled: !!studentId,
   });
 
+  const queryClient = useQueryClient();
+  const canApplyPayments = usePermission(PERMISSIONS.MANAGE_FINANCE);
+  const applyPaymentsMut = useMutation({
+    mutationFn: () => ledgerService.allocateUnappliedPayments(studentId),
+    onSuccess: (res) => {
+      toast.success(res.message ?? "Payments applied to invoices.");
+      queryClient.invalidateQueries({ queryKey: ["finance", "ledger", studentId] });
+    },
+    onError: (err: any) =>
+      toast.error(err?.response?.data?.message ?? "Failed to apply payments to invoices."),
+  });
+
   const ledger = ledgerQ.data?.data;
   const invoices: any[] = ledger?.invoices ?? [];
   const allPayments: any[] = ledger?.payments ?? [];
+  const unallocatedAmount = Number(ledger?.unallocated?.amount ?? 0);
 
   // Separate MIS payments vs UrubutoPay legacy transactions
   const misPayments = allPayments.filter((p) => p._source !== "urubutopay");
@@ -4734,6 +4747,11 @@ function StudentFinanceTab({
     .reduce((s: number, p: any) => s + Number(p.amount ?? 0), 0);
   const totalBankPaid = bankTxns
     .filter((p) => !p._is_reversal)
+    .reduce((s: number, p: any) => s + Number(p.amount ?? 0), 0);
+  // Once received money is applied it is posted as confirmed GATEWAY rows, so it
+  // sits in the MIS list; count it here so the card still shows the gateway total.
+  const totalGatewayMis = misPayments
+    .filter((p) => p.status === "confirmed" && p.source === "GATEWAY")
     .reduce((s: number, p: any) => s + Number(p.amount ?? 0), 0);
   const totalBankReversed = bankTxns
     .filter((p) => p._is_reversal)
@@ -4777,7 +4795,7 @@ function StudentFinanceTab({
         </div>
         <div className="card p-4">
           <p className="text-xs text-ink-500 mb-1">Via UrubutoPay</p>
-          <p className="text-xl font-bold text-blue-600">{formatRWF(totalBankPaid)}</p>
+          <p className="text-xl font-bold text-blue-600">{formatRWF(totalBankPaid + totalGatewayMis)}</p>
         </div>
         <div className="card p-4">
           <p className="text-xs text-ink-500 mb-1">Balance</p>
@@ -4786,6 +4804,34 @@ function StudentFinanceTab({
           </p>
         </div>
       </div>
+
+      {/* Received money that no invoice has taken up yet */}
+      {unallocatedAmount > 0 && (
+        <div className="card p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border border-amber-300 bg-amber-50 dark:bg-amber-900/20 dark:border-amber-700">
+          <div>
+            <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
+              {formatRWF(unallocatedAmount)} received but not applied to invoices
+            </p>
+            <p className="text-xs text-amber-700/80 dark:text-amber-400/80 mt-0.5">
+              {ledger?.unallocated?.blocked
+                ? "Some invoices already show payments with no payment record behind them. Reconcile them in the Ledger before applying received money."
+                : `${ledger?.unallocated?.count} UrubutoPay / mobile money receipt(s). Applying them settles the application, registration and tuition instalments in that order.`}
+            </p>
+          </div>
+          {!selfMode && canApplyPayments && !ledger?.unallocated?.blocked && (
+            <button
+              className="btn-primary btn-sm flex items-center gap-1.5 self-start sm:self-auto"
+              onClick={() => applyPaymentsMut.mutate()}
+              disabled={applyPaymentsMut.isPending}
+            >
+              {applyPaymentsMut.isPending
+                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                : <Banknote className="w-3.5 h-3.5" />}
+              Apply to invoices
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Invoices */}
       <div className="card overflow-hidden">
@@ -4814,11 +4860,12 @@ function StudentFinanceTab({
             <table className="w-full text-sm">
               <thead className="bg-ink-50 dark:bg-ink-700/50 text-ink-500 text-xs uppercase">
                 <tr>
-                  <th className="px-4 py-2.5 text-left">Invoice #</th>
-                  <th className="px-4 py-2.5 text-left">Type</th>
+                  <th className="px-4 py-2.5 text-left">Invoice No.</th>
+                  <th className="px-4 py-2.5 text-left">Fee Type</th>
                   <th className="px-4 py-2.5 text-left">Description</th>
-                  <th className="px-4 py-2.5 text-right">Due</th>
+                  <th className="px-4 py-2.5 text-right">Amount</th>
                   <th className="px-4 py-2.5 text-right">Paid</th>
+                  <th className="px-4 py-2.5 text-right">Bursary</th>
                   <th className="px-4 py-2.5 text-center">Status</th>
                 </tr>
               </thead>
@@ -4832,6 +4879,9 @@ function StudentFinanceTab({
                     <td className="px-4 py-2.5 text-xs">{inv.description}</td>
                     <td className="px-4 py-2.5 text-right font-mono text-xs">{formatRWF(inv.amount_due)}</td>
                     <td className="px-4 py-2.5 text-right font-mono text-xs text-green-600">{formatRWF(inv.amount_paid)}</td>
+                    <td className="px-4 py-2.5 text-right font-mono text-xs text-ink-500">
+                      {Number(inv.bursary_applied) > 0 ? formatRWF(inv.bursary_applied) : "—"}
+                    </td>
                     <td className="px-4 py-2.5 text-center">
                       <InvoiceStatusBadge status={inv.status} />
                     </td>

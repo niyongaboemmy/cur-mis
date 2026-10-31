@@ -457,13 +457,17 @@ class UrubutoPayService
 
         // ── Load or auto-create fee_invoices ──────────────────────────────────
         $invoices = $this->db->fetchAll(
-            "SELECT id, fee_type, semester, fee_structure_id,
+            "SELECT id, fee_type, semester, fee_structure_id, academic_year_id, due_date,
                     amount_due, amount_paid, IFNULL(bursary_applied, 0) AS bursary_applied
              FROM fee_invoices
              WHERE student_id = ? AND status NOT IN ('paid','waived','cancelled')
              ORDER BY created_at ASC",
             [$studentId]
         );
+        // Queue order (application → registration → CURSU → tuition instalments)
+        // rather than creation order: registration has no due date, so a due-date
+        // sort would pay it after the first instalment.
+        usort($invoices, static fn (array $a, array $b): int => FeeService::paymentQueueKey($a) <=> FeeService::paymentQueueKey($b));
 
         // Which internal fee type did the payer actually pick on the gateway menu?
         // NULL means the service maps to no specific type (e.g. `other-fees`) or

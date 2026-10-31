@@ -597,10 +597,13 @@ class AdmissionBillingService
         float  $amount,
         string $currency,
         string $paidAt,
-        string $serviceCode
+        string $serviceCode,
+        string $source = 'GATEWAY',
+        ?int   $recordedBy = null
     ): array {
         $applicationId = (int)$application['id'];
         $phone         = (string)($application['phone'] ?? '');
+        $manual        = $source === 'MANUAL';
 
         $duplicate = $this->payments->existsForReference($txCode);
         if ($duplicate) {
@@ -652,12 +655,15 @@ class AdmissionBillingService
                 'application_id'         => $applicationId,
                 'amount'                 => $apply,
                 'currency'               => $currency ?: (string)$bill['currency'],
-                'payment_method'         => 'MOBILE_MONEY',
+                'payment_method'         => $manual ? 'MANUAL' : 'MOBILE_MONEY',
                 'reference_number'       => $reference,
                 'receipt_number'         => $receipt,
                 'service_code'           => $serviceCode !== '' ? $serviceCode : null,
-                'source'                 => 'GATEWAY',
-                'notes'                  => 'UrubutoPay — service: ' . ($serviceCode ?: 'unspecified') . ', tx: ' . $txCode,
+                'source'                 => $source,
+                'recorded_by'            => $recordedBy,
+                'notes'                  => $manual
+                    ? 'Confirmed claim — ref: ' . $txCode
+                    : 'UrubutoPay — service: ' . ($serviceCode ?: 'unspecified') . ', tx: ' . $txCode,
                 'paid_at'                => $paidAt,
             ]);
 
@@ -679,7 +685,7 @@ class AdmissionBillingService
         SystemLogService::log(
             'CREATE',
             'ADMISSIONS',
-            'UrubutoPay admission fee: tx=' . $txCode
+            ($manual ? 'Confirmed' : 'UrubutoPay') . ' admission fee: tx=' . $txCode
                 . ', application=' . ($application['application_number'] ?? $applicationId)
                 . ', amount=' . $amount . ' RWF, bills_settled=' . count($applied)
                 . ', balance=' . number_format($summary['balance'], 0) . ' RWF.',
@@ -753,7 +759,7 @@ class AdmissionBillingService
         int    $billId,
         float  $amount,
         string $reference,
-        int    $actorId,
+        ?int   $actorId,
         ?string $notes = null
     ): array {
         $application = $this->applications->find($applicationId);
@@ -802,7 +808,7 @@ class AdmissionBillingService
             'receipt_number'         => $receipt,
             'service_code'           => $bill['service_code'] ?: null,
             'source'                 => 'MANUAL',
-            'recorded_by'            => $actorId,
+            'recorded_by'            => $actorId ?: null,
             'notes'                  => $notes !== null && trim($notes) !== '' ? mb_substr(trim($notes), 0, 255) : null,
             'paid_at'                => $paidAt,
         ]);
@@ -835,6 +841,169 @@ class AdmissionBillingService
         }
 
         return ['payment_id' => $paymentId, 'receipt_number' => $receipt, 'summary' => $summary];
+    }
+
+    /**
+     * Settle admission bills from approved bordereau (bank deposit) submissions.
+     *
+     * Approving a bordereau marks the application paid, but on its own it leaves
+     * the admission bills open, so the enrollment gate keeps refusing an applicant
+     * who has paid. This applies each approved amount to the open bills, oldest
+     * first, through recordManualPayment() so the bill and the payment ledger
+     * move together.
+     *
+     * Idempotent: the payments it books are referenced BDX-{submissionId}-{n}, and
+     * a re-run only applies what is not yet booked. Any amount left once every bill
+     * is settled stays unapplied and is reported back.
+     *
+     * @return list<array{submission_id:int,applied:float,unapplied:float}>
+     */
+    public function allocateApprovedBordereaux(int $applicationId, ?int $actorId = null): array
+    {
+        $submissions = $this->db->fetchAll(
+            "SELECT id, amount, receipt_number, reviewed_by
+               FROM `bordereau_submissions`
+              WHERE application_id = ? AND status = 'approved'
+              ORDER BY id ASC",
+            [$applicationId]
+        );
+
+        $results = [];
+        foreach ($submissions as $submission) {
+            $submissionId = (int)$submission['id'];
+            $prefix       = 'BDX-' . $submissionId . '-';
+
+            $booked = $this->db->fetchOne(
+                "SELECT COUNT(*) AS cnt, COALESCE(SUM(amount), 0) AS total
+                   FROM `application_invoice_payments`
+                  WHERE application_id = ? AND reference_number LIKE ?",
+                [$applicationId, $prefix . '%']
+            ) ?: [];
+
+            $sequence  = (int)($booked['cnt'] ?? 0);
+            $remaining = round((float)$submission['amount'] - (float)($booked['total'] ?? 0), 2);
+            $recorder  = (int)($submission['reviewed_by'] ?? 0) ?: $actorId;
+            $applied   = 0.0;
+
+            while ($remaining > 0.009) {
+                $open = $this->invoices->openForApplication($applicationId);
+                if ($open === []) {
+                    break;
+                }
+
+                $bill = $open[0];
+                $gap  = round((float)$bill['amount_due'] - (float)$bill['amount_paid'], 2);
+                $take = min($remaining, $gap);
+                if ($take <= 0.009) {
+                    break;
+                }
+
+                $sequence++;
+                $this->recordManualPayment(
+                    $applicationId,
+                    (int)$bill['id'],
+                    $take,
+                    $prefix . $sequence,
+                    $recorder,
+                    'Bordereau ' . (string)$submission['receipt_number'] . ' approved'
+                );
+
+                $remaining = round($remaining - $take, 2);
+                $applied  += $take;
+            }
+
+            $results[] = [
+                'submission_id' => $submissionId,
+                'applied'       => round($applied, 2),
+                'unapplied'     => max(0.0, $remaining),
+            ];
+        }
+
+        return $results;
+    }
+
+    /**
+     * Finance's view of every admission-fee payment received, whether or not the
+     * applicant has been enrolled yet. The ledger copy (creditAdmissionBills) only
+     * runs at enrollment, so without this the money is invisible to Finance until
+     * a registration number exists.
+     *
+     * @return array{rows:list<array<string,mixed>>,summary:array<string,mixed>,pagination:array<string,int>}
+     */
+    public function financePaymentsReport(?int $academicYearId, int $page, int $perPage): array
+    {
+        $where  = '1 = 1';
+        $params = [];
+        if ($academicYearId) {
+            $where   .= ' AND sa.academic_year_id = ?';
+            $params[] = $academicYearId;
+        }
+
+        $totals = $this->db->fetchOne(
+            "SELECT COUNT(*)                          AS total,
+                    COALESCE(SUM(aip.amount), 0)      AS total_amount,
+                    COUNT(DISTINCT aip.application_id) AS applicants
+               FROM `application_invoice_payments` aip
+               JOIN `application_invoices` ai ON ai.id = aip.application_invoice_id
+               JOIN `student_applications` sa ON sa.id = aip.application_id
+              WHERE {$where}",
+            $params
+        ) ?: [];
+
+        $total   = (int)($totals['total'] ?? 0);
+        $perPage = max(1, min(100, $perPage));
+        $page    = max(1, $page);
+        $offset  = ($page - 1) * $perPage;
+
+        $rows = $this->db->fetchAll(
+            "SELECT aip.id, aip.amount, aip.currency, aip.payment_method, aip.source,
+                    aip.reference_number, aip.receipt_number, aip.paid_at, aip.notes,
+                    ai.fee_type, ai.label, ai.amount_due, ai.status AS bill_status,
+                    sa.id AS application_id, sa.application_number, sa.first_name,
+                    sa.last_name, sa.email, sa.status AS application_status,
+                    sa.enrolled_student_id
+               FROM `application_invoice_payments` aip
+               JOIN `application_invoices` ai ON ai.id = aip.application_invoice_id
+               JOIN `student_applications` sa ON sa.id = aip.application_id
+              WHERE {$where}
+              ORDER BY aip.paid_at DESC, aip.id DESC
+              LIMIT {$perPage} OFFSET {$offset}",
+            $params
+        );
+
+        return [
+            'rows'    => array_map(static fn (array $r): array => [
+                'id'                  => (int)$r['id'],
+                'paid_at'             => $r['paid_at'],
+                'application_id'      => (int)$r['application_id'],
+                'application_number'  => (string)$r['application_number'],
+                'applicant_name'      => trim((string)$r['first_name'] . ' ' . (string)$r['last_name']),
+                'email'               => (string)($r['email'] ?? ''),
+                'fee_type'            => (string)$r['fee_type'],
+                'label'               => (string)($r['label'] ?: $r['fee_type']),
+                'amount'              => (float)$r['amount'],
+                'amount_due'          => (float)$r['amount_due'],
+                'currency'            => (string)($r['currency'] ?: 'RWF'),
+                'reference_number'    => (string)$r['reference_number'],
+                'receipt_number'      => (string)($r['receipt_number'] ?? ''),
+                'payment_method'      => (string)($r['payment_method'] ?? ''),
+                'source'              => (string)($r['source'] ?? ''),
+                'bill_status'         => (string)$r['bill_status'],
+                'application_status'  => (string)($r['application_status'] ?? ''),
+                'enrolled_student_id' => $r['enrolled_student_id'] ?: null,
+            ], $rows),
+            'summary' => [
+                'count'        => $total,
+                'total_amount' => (float)($totals['total_amount'] ?? 0),
+                'applicants'   => (int)($totals['applicants'] ?? 0),
+            ],
+            'pagination' => [
+                'current_page' => $page,
+                'per_page'     => $perPage,
+                'total'        => $total,
+                'last_page'    => max(1, (int)ceil($total / $perPage)),
+            ],
+        ];
     }
 
     private function generateReceiptNumber(): string

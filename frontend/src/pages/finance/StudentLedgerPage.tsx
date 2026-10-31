@@ -12,6 +12,8 @@ import {
   CheckCircle2,
   Info,
   Download,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { ledgerService, feeStructureService, feeInvoicePdfService } from "@/services/financeService";
@@ -739,6 +741,7 @@ function InstallmentBreakdown({
   yearId: number;
   invoices: FeeInvoice[];
 }) {
+  const [open, setOpen] = useState(false);
   const structuresQ = useQuery({
     queryKey: ["fee-structures", yearId],
     queryFn: () =>
@@ -757,11 +760,21 @@ function InstallmentBreakdown({
 
   return (
     <div className="card">
-      <div className="px-4 py-2.5 border-b border-ink-100 dark:border-ink-700 font-medium text-sm flex items-center gap-2 bg-ink-50/50 dark:bg-ink-700/20">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className={`w-full text-left px-4 py-2.5 font-medium text-sm flex items-center gap-2 bg-ink-50/50 dark:bg-ink-700/20 ${open ? "border-b border-ink-100 dark:border-ink-700" : ""}`}
+      >
         <Info className="w-4 h-4 text-ink-400" />
         <span>Installment Breakdown</span>
-      </div>
-      <div className="overflow-x-auto">
+        {open ? (
+          <ChevronDown className="w-4 h-4 ml-auto text-ink-400" />
+        ) : (
+          <ChevronRight className="w-4 h-4 ml-auto text-ink-400" />
+        )}
+      </button>
+      {open && <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-ink-50 dark:bg-ink-700/50 text-ink-500 text-xs uppercase">
             <tr>
@@ -821,7 +834,7 @@ function InstallmentBreakdown({
             ))}
           </tbody>
         </table>
-      </div>
+      </div>}
     </div>
   );
 }

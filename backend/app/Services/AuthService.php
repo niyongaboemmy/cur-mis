@@ -238,6 +238,32 @@ class AuthService
     }
 
     /**
+     * Insert the applicant's `users` row. Returns null when the email is
+     * already taken: the exists() pre-check can't stop a double-clicked
+     * Register button, whose second request loses the race on the unique
+     * `email` key and would otherwise surface as a 500.
+     */
+    private function createApplicantUser(UserModel $userModel, string $fullName, string $email, string $password, ?int $roleId): ?int
+    {
+        try {
+            return (int)$userModel->create([
+                'full_name'    => $fullName,
+                'email'        => $email,
+                'username'     => strtolower(str_replace(' ', '.', $fullName)) . '.' . rand(100, 999),
+                'password'     => password_hash($password, PASSWORD_BCRYPT),
+                'role_id'      => $roleId,
+                'is_active'    => 1,
+                'is_applicant' => 1,
+            ]);
+        } catch (\PDOException $e) {
+            if ((string)$e->getCode() === '23000' && $userModel->exists('email', $email)) {
+                return null;
+            }
+            throw $e;
+        }
+    }
+
+    /**
      * Applicant self-registration (Before Application)
      */
     public function registerApplicantAccount(string $firstName, string $lastName, string $email, string $password): array
@@ -262,15 +288,15 @@ class AuthService
 
         // 3. Create user account
         $fullName = trim($firstName . ' ' . $lastName);
-        $userId   = (int)$userModel->create([
-            'full_name'    => $fullName,
-            'email'        => $email,
-            'username'     => strtolower(str_replace(' ', '.', $fullName)) . '.' . rand(100, 999),
-            'password'     => password_hash($password, PASSWORD_BCRYPT),
-            'role_id'      => $roleId,
-            'is_active'    => 1,
-            'is_applicant' => 1,
-        ]);
+        $userId   = $this->createApplicantUser($userModel, $fullName, $email, $password, $roleId);
+        if ($userId === null) {
+            return [
+                'success' => false,
+                'code'    => 409,
+                'message' => 'An account already exists for this email. Please log in instead.',
+                'data'    => null,
+            ];
+        }
 
         // 4. Create stub applicant_profiles row
         $profileModel = new ApplicantProfileModel();
@@ -365,15 +391,15 @@ class AuthService
 
         // 4. Create user account
         $fullName = trim($application['first_name'] . ' ' . $application['last_name']);
-        $userId   = (int)$userModel->create([
-            'full_name'    => $fullName,
-            'email'        => $email,
-            'username'     => strtolower(str_replace(' ', '.', $fullName)) . '.' . rand(100, 999),
-            'password'     => password_hash($password, PASSWORD_BCRYPT),
-            'role_id'      => $roleId,
-            'is_active'    => 1,
-            'is_applicant' => 1,
-        ]);
+        $userId   = $this->createApplicantUser($userModel, $fullName, $email, $password, $roleId);
+        if ($userId === null) {
+            return [
+                'success' => false,
+                'code'    => 409,
+                'message' => 'An account already exists for this email. Please log in instead.',
+                'data'    => null,
+            ];
+        }
 
         // 5. Create stub applicant_profiles row
         $profileModel = new ApplicantProfileModel();

@@ -46,7 +46,6 @@ import Logo from "@/components/brand/Logo";
 import { useCurrentUser } from "@/hooks/useAuth";
 import { useAcademicScope } from "@/hooks/useAcademicScope";
 import ScopeGate from "@/components/layout/ScopeGate";
-import ModuleRequestGate from "@/components/layout/ModuleRequestGate";
 import { useSystemBasics } from "@/hooks/useSystemBasics";
 
 import {
@@ -116,33 +115,10 @@ const SCOPED_HIDDEN_NAV_IDS = new Set([
   // Institution-wide metrics: not shown to Dean / HOD accounts.
   "campus-statistics",
   "support-reporting",
-  // Areas the Dean / HOD scope does not cover yet (the server refuses them).
-  "my-payroll",
-  "my-service-requests",
-  "services",
 ]);
-
-/** Menu links (by path) hidden from Dean / HOD accounts for the same reason. */
-const SCOPED_HIDDEN_PATHS = [
-  "/students/id-cards",
-  "/documents/generate",
-  "/me/payroll",
-  // Deliberation and revaluations stay with the exam office.
-  "/exams/deliberation",
-  "/exams/revaluations",
-  "/academic/transcript",
-  "/academic/certificates",
-  "/academic/system-documents",
-  "/academic/graduands",
-  "/service",
-  "/finance",
-  "/my-finance",
-];
 
 const NAV_TREE: NavNode[] = [
   { id: "home", label: "Home", icon: Home, to: "/" },
-  // Admin and Dean / HOD: place lecturers (faculty, department, option).
-  { id: "lecturer-placement", label: "Lecturers", icon: UserIcon, to: "/lecturers" },
   {
     id: "campus-statistics",
     label: "Campus Statistics",
@@ -165,10 +141,48 @@ const NAV_TREE: NavNode[] = [
     id: "student-profile",
     label: "Profile",
     icon: UserIcon,
-    to: "/me/profile",
-    // Role-scoped: enrolled students see "My Profile" wired to /api/students/me.
+    // Role-scoped: enrolled students see their profile wired to /api/students/me.
+    // Each tab of the profile page is a direct entry so students land on it.
     roles: ["student"],
     permissions: [PERMISSIONS.ACCESS_STUDENT_PORTAL],
+    children: [
+      {
+        to: "/me/profile?tab=overview",
+        label: "Overview & Stats",
+        roles: ["student"],
+        permissions: [PERMISSIONS.ACCESS_STUDENT_PORTAL],
+      },
+      {
+        to: "/me/profile?tab=attendance",
+        label: "Attendance",
+        roles: ["student"],
+        permissions: [PERMISSIONS.ACCESS_STUDENT_PORTAL],
+      },
+      {
+        to: "/me/profile?tab=documents",
+        label: "Documents",
+        roles: ["student"],
+        permissions: [PERMISSIONS.ACCESS_STUDENT_PORTAL],
+      },
+      {
+        to: "/me/profile?tab=curriculum",
+        label: "Program & Marks",
+        roles: ["student"],
+        permissions: [PERMISSIONS.ACCESS_STUDENT_PORTAL],
+      },
+      {
+        to: "/me/profile?tab=finance",
+        label: "Finance",
+        roles: ["student"],
+        permissions: [PERMISSIONS.ACCESS_STUDENT_PORTAL],
+      },
+      {
+        to: "/me/profile?tab=transcript",
+        label: "Transcript",
+        roles: ["student"],
+        permissions: [PERMISSIONS.ACCESS_STUDENT_PORTAL],
+      },
+    ],
   },
   {
     id: "student-services",
@@ -225,12 +239,6 @@ const NAV_TREE: NavNode[] = [
         showWhenTeaching: true,
       },
       {
-        to: "/my-students",
-        label: "My students",
-        permissions: [PERMISSIONS.ACCESS_TEACHER_PORTAL],
-        showWhenTeaching: true,
-      },
-      {
         to: "/attendance",
         label: "Attendance",
         permissions: [PERMISSIONS.RECORD_ATTENDANCE, PERMISSIONS.VIEW_ATTENDANCE],
@@ -245,7 +253,7 @@ const NAV_TREE: NavNode[] = [
     id: "my-payroll",
     label: "My Payroll",
     icon: Wallet,
-    to: "/me/payroll",
+    to: "/me/payslips",
     hideForRoles: ["student", "applicant"],
   },
   {
@@ -675,7 +683,7 @@ const NAV_TREE: NavNode[] = [
     hideForRoles: ["student", "applicant"],
     children: [
       {
-        to: "/finance",
+        to: "/finance/dashboard-system",
         label: "Overview",
         permissions: [PERMISSIONS.VIEW_FINANCE_OVERVIEW],
       },
@@ -689,7 +697,7 @@ const NAV_TREE: NavNode[] = [
         ],
       },
       {
-        to: "/finance/billing",
+        to: "/finance/billing-system",
         label: "Billing",
         permissions: [PERMISSIONS.VIEW_FINANCE_BILLING],
       },
@@ -763,14 +771,6 @@ const NAV_TREE: NavNode[] = [
     to: "/my/service-requests",
     roles: ["student"],
     permissions: [PERMISSIONS.ACCESS_STUDENT_PORTAL, PERMISSIONS.SUBMIT_SERVICE_REQUEST],
-  },
-  {
-    id: "attendance-student",
-    label: "Attendance",
-    icon: ClipboardCheck,
-    to: "/me/profile?tab=attendance",
-    roles: ["student"],
-    permissions: [PERMISSIONS.ACCESS_STUDENT_PORTAL],
   },
   {
     id: "exam",
@@ -1102,6 +1102,10 @@ const ROUTE_TITLES: Record<string, { title: string; sub?: string }> = {
     title: "My Payroll",
     sub: "Your personal payslip history and salary breakdown",
   },
+  "/me/payslips": {
+    title: "My Payroll",
+    sub: "Your payslips",
+  },
   "/me/leave": {
     title: "My Leave",
     sub: "Request leave and track your own requests",
@@ -1176,6 +1180,14 @@ const ROUTE_TITLES: Record<string, { title: string; sub?: string }> = {
   "/finance/billing": {
     title: "Billing",
     sub: "Student ledger and invoice management",
+  },
+  "/finance/billing-system": {
+    title: "Billing",
+    sub: "Billing system",
+  },
+  "/finance/dashboard-system": {
+    title: "Finance Dashboard",
+    sub: "Collection overview",
   },
   "/finance/structures": {
     title: "Fee Rates",
@@ -1432,13 +1444,6 @@ export default function MainLayout() {
 
   const { user } = useAuthStore();
   const { scope: academicScope, refresh: refreshScope } = useAcademicScope();
-  // A lecturer with no faculty or department sees students only under My students.
-  const teachingOnly =
-    !!user &&
-    String(user.role ?? "").toLowerCase() === "lecturer" &&
-    !isSuperadmin(user) &&
-    !(user.permissions ?? []).includes(PERMISSIONS.MANAGE_USERS) &&
-    !academicScope.scoped;
 
   const hasAccess = useCallback(
     (perms?: string[]) => {
@@ -1465,25 +1470,14 @@ export default function MainLayout() {
   const isVisible = useCallback(
     (node: {
       id?: string;
-      to?: string;
       roles?: string[];
       permissions?: string[];
       hideForRoles?: string[];
       showWhenTeaching?: boolean;
     }) => {
       if (node.hideForRoles?.includes(user?.role ?? "")) return false;
-      // Dean / Head of Department: finance, admissions and HR are outside their scope.
-      if (teachingOnly && (node.id === "students-group" || node.to?.startsWith("/students"))) return false;
-      // Lecturers do not manage system settings, grading or system documents.
-      if (teachingOnly && (node.id === "system-settings" || ["/settings", "/academic/grading-scale", "/academic/system-documents"].some((p) => node.to?.startsWith(p)))) return false;
-      if (node.id === "lecturer-placement") {
-        const perms: string[] = user?.permissions ?? [];
-        return academicScope.scoped || isSuperadmin(user) || perms.includes(PERMISSIONS.MANAGE_USERS);
-      }
+      // Dean / HOD: finance, admissions and HR are outside their scope.
       if (academicScope.scoped && node.id && SCOPED_HIDDEN_NAV_IDS.has(node.id)) return false;
-      // Dean / HOD: year and term setup is institution-wide, not theirs to change.
-      if (academicScope.scoped && node.to?.includes("tab=years-terms")) return false;
-      if (academicScope.scoped && node.to && SCOPED_HIDDEN_PATHS.some((p) => node.to!.includes(p))) return false;
       if (node.showWhenTeaching && user?.is_teaching) return matchesRoles(node.roles);
       return matchesRoles(node.roles) && hasAccess(node.permissions);
     },
@@ -1579,7 +1573,6 @@ export default function MainLayout() {
       {(academicScope.needs_choice || academicScope.waiting) && (
         <ScopeGate scope={academicScope} onSubmitted={refreshScope} />
       )}
-      <ModuleRequestGate />
       {/* Blue banner */}
       <BlueBanner />
 

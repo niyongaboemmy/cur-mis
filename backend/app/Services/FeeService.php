@@ -950,24 +950,48 @@ class FeeService
     // ──────────────────────────────────────────────────────────────────────────
 
     /**
-     * The oldest still-unpaid invoice that outranks $invoice for the same
-     * student, or null when $invoice is itself the oldest outstanding one.
+     * Where an invoice sits in the payment queue. Lower sorts first.
      *
-     * Ordering is ARREARS first (a balance carried forward outranks anything
-     * billed this year regardless of dates), then by academic year, then by
-     * due date, then by id so the order is total and stable.
+     * ARREARS lead (a balance carried forward outranks anything billed this
+     * year), then the older academic year, then the heading a student clears
+     * first (application, registration, CURSU, tuition), then due date and id,
+     * so tuition instalments fill in order (1/4, 2/4 …).
+     *
+     * Every path that spreads money over invoices (gateway, manual lump sum,
+     * legacy-receipt allocation) sorts by this key, so they agree.
+     *
+     * @param array<string,mixed> $invoice
+     */
+    public static function paymentQueueKey(array $invoice): array
+    {
+        $type = strtoupper((string) ($invoice['fee_type'] ?? ''));
+
+        return [
+            $type === 'ARREARS' ? 0 : 1,
+            (int) ($invoice['academic_year_id'] ?? 0),
+            self::PAYMENT_QUEUE_RANK[$type] ?? self::PAYMENT_QUEUE_RANK_OTHER,
+            (string) ($invoice['due_date'] ?? '9999-12-31'),
+            (int) ($invoice['id'] ?? 0),
+        ];
+    }
+
+    private const PAYMENT_QUEUE_RANK = [
+        'APPLICATION'  => 0,
+        'ADMISSION'    => 1,
+        'REGISTRATION' => 2,
+        'CURSU'        => 3,
+        'TUITION'      => 4,
+    ];
+    private const PAYMENT_QUEUE_RANK_OTHER = 5;
+
+    /**
+     * The oldest still-unpaid invoice that outranks $invoice for the same
+     * student, or null when $invoice is itself first in the payment queue.
      *
      * BURSARY_CREDIT rows are credits, not debts, and never block a payment.
      */
     private function oldestUnpaidBefore(array $invoice): ?array
     {
-        $rank = static fn (array $inv): array => [
-            ($inv['fee_type'] ?? '') === 'ARREARS' ? 0 : 1,
-            (int) ($inv['academic_year_id'] ?? 0),
-            (string) ($inv['due_date'] ?? '9999-12-31'),
-            (int) ($inv['id'] ?? 0),
-        ];
-
         // Pending payments count against the outstanding amount here, even
         // though they have not yet touched `amount_paid` (that happens on
         // approval). Otherwise an officer recording a student's arrears and
@@ -995,14 +1019,14 @@ class FeeService
             [$invoice['student_id'], (int) $invoice['id']]
         );
 
-        $target = $rank($invoice);
+        $target = self::paymentQueueKey($invoice);
         $oldest = null;
 
         foreach ($candidates as $c) {
-            if ($rank($c) >= $target) {
+            if (self::paymentQueueKey($c) >= $target) {
                 continue;   // same age or newer — does not block.
             }
-            if ($oldest === null || $rank($c) < $rank($oldest)) {
+            if ($oldest === null || self::paymentQueueKey($c) < self::paymentQueueKey($oldest)) {
                 $oldest = $c;
             }
         }
@@ -1027,31 +1051,7 @@ class FeeService
             throw new \InvalidArgumentException('Amount must be greater than zero.');
         }
 
-        // Pending payments are netted off for the same reason as in
-        // oldestUnpaidBefore() — otherwise a second lump-sum allocation would
-        // double-pay invoices the first one already covered.
-        $invoices = $this->db->fetchAll(
-            "SELECT i.id, i.invoice_number, i.fee_type, i.academic_year_id, i.due_date,
-                    (i.amount_due - i.amount_paid - i.bursary_applied
-                       - COALESCE(p.pending_amount, 0)) AS outstanding
-               FROM `fee_invoices` i
-               LEFT JOIN (
-                    SELECT invoice_id, SUM(amount) AS pending_amount
-                      FROM `fee_payments`
-                     WHERE status = 'pending'
-                     GROUP BY invoice_id
-               ) p ON p.invoice_id = i.id
-              WHERE i.student_id = ?
-                AND i.fee_type <> 'BURSARY_CREDIT'
-                AND i.status NOT IN ('paid', 'waived', 'cancelled')
-                AND (i.amount_due - i.amount_paid - i.bursary_applied
-                       - COALESCE(p.pending_amount, 0)) > 0.009
-              ORDER BY (i.fee_type = 'ARREARS') DESC,
-                       i.academic_year_id ASC,
-                       COALESCE(i.due_date, '9999-12-31') ASC,
-                       i.id ASC",
-            [$studentId]
-        );
+        $invoices = $this->openInvoicesInPaymentOrder($studentId);
 
         if ($invoices === []) {
             throw new \RuntimeException('This student has no outstanding invoices.');
@@ -1094,6 +1094,253 @@ class FeeService
         }
 
         return ['allocations' => $allocations, 'unallocated' => $remaining];
+    }
+
+    /**
+     * A student's open invoices, in the order money should settle them.
+     *
+     * Pending payments are netted off so a second allocation cannot double-pay
+     * invoices the first one already covered (see oldestUnpaidBefore()).
+     *
+     * @return list<array<string,mixed>> each row carries `outstanding`
+     */
+    private function openInvoicesInPaymentOrder(string $studentId): array
+    {
+        $invoices = $this->db->fetchAll(
+            "SELECT i.id, i.invoice_number, i.fee_type, i.academic_year_id, i.due_date, i.semester,
+                    i.fee_structure_id,
+                    (i.amount_due - i.amount_paid - i.bursary_applied
+                       - COALESCE(p.pending_amount, 0)) AS outstanding
+               FROM `fee_invoices` i
+               LEFT JOIN (
+                    SELECT invoice_id, SUM(amount) AS pending_amount
+                      FROM `fee_payments`
+                     WHERE status = 'pending'
+                     GROUP BY invoice_id
+               ) p ON p.invoice_id = i.id
+              WHERE i.student_id = ?
+                AND i.fee_type <> 'BURSARY_CREDIT'
+                AND i.status NOT IN ('paid', 'waived', 'cancelled')
+                AND (i.amount_due - i.amount_paid - i.bursary_applied
+                       - COALESCE(p.pending_amount, 0)) > 0.009",
+            [$studentId]
+        );
+
+        usort($invoices, static fn (array $a, array $b): int => self::paymentQueueKey($a) <=> self::paymentQueueKey($b));
+
+        return $invoices;
+    }
+
+    /**
+     * Money the gateway or the legacy ledger received for this student that no
+     * fee_payments row has taken up yet. The invoices still read unpaid for
+     * these, so they are what "the student has paid but the system doesn't
+     * show it" means.
+     *
+     * Legacy rows are grouped by transaction reference and netted, so a
+     * reversal cancels its own debit and a receipt already allocated (its
+     * reference is on a fee_payments row, possibly with a `-N` suffix for a
+     * spill-over) is left out.
+     *
+     * @return list<array{reference:string,amount:float,payment_method:string,paid_at:?string,description:string}>
+     */
+    public function findUnallocatedReceipts(string $studentId): array
+    {
+        $rows = $this->db->fetchAll(
+            "SELECT COALESCE(NULLIF(TRIM(p.external_transaction_id), ''), NULLIF(TRIM(p.slip_no), '')) AS reference,
+                    p.amount, p.`date`, p.payment_chanel, p.payment_notifi, p.action, p.description
+               FROM `payment` p
+              WHERE CONVERT(p.student USING utf8mb4) COLLATE utf8mb4_unicode_ci
+                    = CONVERT(? USING utf8mb4) COLLATE utf8mb4_unicode_ci
+              ORDER BY p.`date` ASC, p.id ASC",
+            [$studentId]
+        );
+
+        $groups = [];
+        foreach ($rows as $row) {
+            $reference = (string) ($row['reference'] ?? '');
+            if ($reference === '') {
+                continue;   // nothing to match a fee_payments row against
+            }
+            $isCredit = strtolower(trim((string) ($row['payment_notifi'] ?? $row['action'] ?? 'debit'))) === 'credit';
+            $amount   = (float) ($row['amount'] ?? 0);
+
+            $groups[$reference] ??= [
+                'reference'      => $reference,
+                'amount'         => 0.0,
+                'payment_method' => self::legacyPaymentMethod((string) ($row['payment_chanel'] ?? '')),
+                'paid_at'        => $row['date'] ?? null,
+                'description'    => (string) ($row['description'] ?? ''),
+            ];
+            $groups[$reference]['amount'] += $isCredit ? -$amount : $amount;
+        }
+
+        // A reference already on a payment row is settled — a re-run must not
+        // post the same money twice.
+        $taken = array_map(
+            static fn (array $r): string => (string) $r['reference_number'],
+            $this->db->fetchAll(
+                "SELECT reference_number FROM `fee_payments`
+                  WHERE student_id = ? AND status IN ('confirmed', 'pending')
+                    AND reference_number IS NOT NULL AND reference_number <> ''",
+                [$studentId]
+            )
+        );
+
+        $open = [];
+        foreach ($groups as $group) {
+            if ($group['amount'] <= 0.009) {
+                continue;
+            }
+            foreach ($taken as $t) {
+                if ($t === $group['reference'] || str_starts_with($t, $group['reference'] . '-')) {
+                    continue 2;
+                }
+            }
+            $group['amount'] = round($group['amount'], 2);
+            $open[] = $group;
+        }
+
+        return $open;
+    }
+
+    /**
+     * Post every unallocated receipt of a student against their open invoices,
+     * in queue order, and mark the invoices paid as the money covers them.
+     *
+     * The money has already been received, so each allocation is a confirmed
+     * GATEWAY payment, not a pending one awaiting approval. Its reference is the
+     * transaction reference, which is what makes this safe to run again:
+     * findUnallocatedReceipts() stops returning a receipt once it is posted.
+     *
+     * @return array{receipts:int,applied:float,unallocated:float,academic_year_ids:list<int>,allocations:list<array<string,mixed>>}
+     */
+    public function allocateUnappliedReceipts(string $studentId, int $actorId): array
+    {
+        if ($this->unbackedInvoicePayments($studentId) > 0.009) {
+            throw new \RuntimeException(
+                'Some invoices already show payments that have no payment record behind them, '
+                . 'so received money cannot be applied automatically. Reconcile those invoices first.'
+            );
+        }
+
+        $receipts    = $this->findUnallocatedReceipts($studentId);
+        $allocations = [];
+        $unallocated = 0.0;
+
+        if ($receipts === []) {
+            return $this->allocationResult(0, $allocations, 0.0);
+        }
+
+        $this->db->transaction(function () use ($studentId, $receipts, $actorId, &$allocations, &$unallocated): void {
+            foreach ($receipts as $receipt) {
+                $unallocated += $this->spreadReceipt($studentId, $receipt, $actorId, $allocations);
+            }
+        });
+
+        return $this->allocationResult(count($receipts), $allocations, round($unallocated, 2));
+    }
+
+    /**
+     * Post one receipt across the open invoices. Returns what was left over,
+     * which is only non-zero when the student owes less than the receipt.
+     *
+     * @param array{reference:string,amount:float,payment_method:string,paid_at:?string} $receipt
+     * @param list<array<string,mixed>> $allocations appended to
+     */
+    private function spreadReceipt(string $studentId, array $receipt, int $actorId, array &$allocations): float
+    {
+        $remaining = round((float) $receipt['amount'], 2);
+        $rowsPosted = 0;
+
+        foreach ($this->openInvoicesInPaymentOrder($studentId) as $inv) {
+            if ($remaining <= 0.009) {
+                break;
+            }
+            $take = min($remaining, round((float) $inv['outstanding'], 2));
+            if ($take <= 0.009) {
+                continue;
+            }
+
+            $reference = $receipt['reference'] . ($rowsPosted > 0 ? '-' . ($rowsPosted + 1) : '');
+            $receiptNumber = $this->generateReceiptNumber();
+
+            $this->paymentModel->create([
+                'invoice_id'       => (int) $inv['id'],
+                'student_id'       => $studentId,
+                'amount'           => $take,
+                'fee_type'         => (string) ($inv['fee_type'] ?? 'TUITION'),
+                'academic_year_id' => (int) $inv['academic_year_id'],
+                'semester'         => !empty($inv['semester']) ? (int) $inv['semester'] : null,
+                'fee_structure_id' => !empty($inv['fee_structure_id']) ? (int) $inv['fee_structure_id'] : null,
+                'payment_method'   => $receipt['payment_method'],
+                'reference_number' => $reference,
+                'receipt_number'   => $receiptNumber,
+                'status'           => 'confirmed',
+                'source'           => 'GATEWAY',
+                'notes'            => 'Allocated from received payment ' . $receipt['reference'],
+                'recorded_by'      => $actorId,
+                'paid_at'          => $receipt['paid_at'] ?? date('Y-m-d H:i:s'),
+            ]);
+            $this->invoiceModel->applyPayment((int) $inv['id'], $take);
+
+            $allocations[] = [
+                'invoice_id'       => (int) $inv['id'],
+                'invoice_number'   => (string) $inv['invoice_number'],
+                'fee_type'         => (string) ($inv['fee_type'] ?? ''),
+                'academic_year_id' => (int) $inv['academic_year_id'],
+                'amount'           => $take,
+                'reference'        => $receipt['reference'],
+                'receipt_number'   => $receiptNumber,
+            ];
+            $remaining = round($remaining - $take, 2);
+            $rowsPosted++;
+        }
+
+        return max(0.0, $remaining);
+    }
+
+    /**
+     * Invoice money that no confirmed payment row accounts for: the student's
+     * invoices' amount_paid minus their confirmed fee_payments. The legacy
+     * sync script wrote payments straight onto invoices this way. Applying
+     * received money on top would count that money twice, so allocation
+     * refuses while this is above zero and the officer reconciles by hand.
+     */
+    public function unbackedInvoicePayments(string $studentId): float
+    {
+        $row = $this->db->fetchOne(
+            "SELECT
+               (SELECT COALESCE(SUM(i.amount_paid), 0) FROM `fee_invoices` i
+                 WHERE i.student_id = ?) AS invoiced_paid,
+               (SELECT COALESCE(SUM(fp.amount), 0) FROM `fee_payments` fp
+                 WHERE fp.student_id = ? AND fp.status = 'confirmed' AND fp.invoice_id IS NOT NULL) AS backed",
+            [$studentId, $studentId]
+        );
+
+        return max(0.0, round((float) ($row['invoiced_paid'] ?? 0) - (float) ($row['backed'] ?? 0), 2));
+    }
+
+    /** @param list<array<string,mixed>> $allocations */
+    private function allocationResult(int $receipts, array $allocations, float $unallocated): array
+    {
+        return [
+            'receipts'          => $receipts,
+            'applied'           => round(array_sum(array_column($allocations, 'amount')), 2),
+            'unallocated'       => $unallocated,
+            'academic_year_ids' => array_values(array_unique(array_column($allocations, 'academic_year_id'))),
+            'allocations'       => $allocations,
+        ];
+    }
+
+    /** Same channel mapping the student ledger uses for legacy rows. */
+    private static function legacyPaymentMethod(string $channel): string
+    {
+        $channel = strtoupper(trim($channel));
+
+        return (str_contains($channel, 'USSD') || str_contains($channel, 'MOMO') || str_contains($channel, 'MOBILE'))
+            ? 'MOBILE_MONEY'
+            : 'BANK_TRANSFER';
     }
 
     /**

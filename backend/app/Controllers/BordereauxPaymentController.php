@@ -3,6 +3,7 @@
 namespace App\Controllers;
 
 use App\Models\DB;
+use App\Services\AdmissionBillingService;
 use DateTime;
 
 class BordereauxPaymentController
@@ -320,6 +321,18 @@ class BordereauxPaymentController
                  VALUES (?, 'paid', ?, ?, NOW())",
                 [$submission['application_id'], "Bordereau payment approved: {$submission['amount']} RWF", $staffId]
             );
+
+            // Settle the admission bills with this deposit, so the enrollment gate
+            // sees it. A failure here must not undo the approval above; the backfill
+            // script (scripts/backfill_bordereau_allocations.php) picks it up later.
+            try {
+                (new AdmissionBillingService())->allocateApprovedBordereaux(
+                    (int)$submission['application_id'],
+                    (int)$staffId
+                );
+            } catch (\Throwable $e) {
+                error_log('[Bordereau] bill allocation failed for application ' . $submission['application_id'] . ': ' . $e->getMessage());
+            }
 
             jsonResponse([
                 'success' => true,

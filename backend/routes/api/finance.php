@@ -130,6 +130,7 @@ $router->group('/api/finance', function ($router) {
     // ── Read-only: reports ───────────────────────────────────────────────────
     $router->group('', function ($r) {
         $r->get('/reports/application-fee-reconciliation', [FeeController::class, 'applicationFeeReconciliation']);
+        $r->get('/reports/admission-fee-payments',         [FeeController::class, 'listAdmissionFeePayments']);
         $r->get('/reports/monthly',          [FeeController::class, 'getMonthlyCollections']);
         $r->get('/reports/revenue',          [FeeController::class, 'getRevenueReport']);
         $r->get('/reports/outstanding',      [FeeController::class, 'getOutstandingReport']);
@@ -219,6 +220,8 @@ $router->group('/api/finance', function ($router) {
         $r->post('/payments',                [FeeController::class, 'recordPayment']);
         // Spread one amount over the outstanding invoices, oldest first.
         $r->post('/payments/pay-oldest-first', [FeeController::class, 'payOldestFirst']);
+        // Post received-but-unallocated money (gateway, mobile money, legacy ledger) to invoices.
+        $r->post('/payments/allocate-unapplied', [FeeController::class, 'allocateUnappliedPayments']);
         $r->post('/payments/:id/approve',   [FeeController::class, 'approvePayment']);
         $r->post('/payments/:id/reject',    [FeeController::class, 'rejectPayment']);
 

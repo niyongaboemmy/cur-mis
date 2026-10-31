@@ -1084,6 +1084,8 @@ function EditApplicationModal({
             <input
               type="date"
               className="input"
+              min="1900-01-01"
+              max={new Date().toISOString().slice(0, 10)}
               value={form.birthdate}
               onChange={(e) => setForm({ ...form, birthdate: e.target.value })}
             />
