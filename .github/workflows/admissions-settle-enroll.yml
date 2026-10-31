@@ -1,17 +1,18 @@
 name: Admissions — settle deposits and issue registration numbers
 
-# Manual only. Runs on the production server, against the live database, using the
-# server's own backend/.env. Run it with mode "dry-run" first and read the output.
-# "apply" writes: it books approved bordereau deposits onto admission bills and
-# enrolls every applicant whose admission fees are fully paid.
+# Manual only. Calls the LIVE site (cur.ac.rw, the cPanel backend that real users
+# and UrubutoPay use) through the protected deploy endpoint
+# POST /api/deploy/settle-admissions, authenticated with the DEPLOY_KEY secret.
 #
-# Pending bordereau deposits are never approved here. Finance still verifies those.
+# Run it with mode "dry-run" first and read the output. "apply" writes: it books
+# approved bordereau deposits onto admission bills and enrolls every applicant whose
+# admission fees are fully paid. Pending bordereau deposits are never approved here.
 
 on:
   workflow_dispatch:
     inputs:
       mode:
-        description: 'dry-run lists what would change; apply writes to the database'
+        description: 'dry-run lists what would change; apply writes to the live database'
         type: choice
         options: [dry-run, apply]
         default: dry-run
@@ -27,41 +28,56 @@ concurrency:
 jobs:
   settle-and-enroll:
     name: Settle deposits and enroll paid applicants
-    runs-on: cur-svr-prod
-    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     env:
-      APP_ROOT: /srv/cur-mis
+      API_BASE: https://cur.ac.rw/umis
+      DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
       MODE: ${{ inputs.mode }}
       APPLICATION: ${{ inputs.application }}
     steps:
-      - name: Confirm the live release has the settlement code
+      - name: Run settlement on the live site
         run: |
-          set -euo pipefail
-          REL="$APP_ROOT/backend/current"
-          if ! grep -q "function enrollIfSettled" "$REL/app/Services/AdmissionBillingService.php"; then
-            echo "The release at $REL does not have enrollIfSettled yet."
-            echo "Wait for the Backend deploy to finish, then run this again."
+          set -uo pipefail
+
+          if [ -z "$DEPLOY_KEY" ]; then
+            echo "The DEPLOY_KEY secret is not set in this repository. Add it under Settings > Secrets and variables > Actions."
             exit 1
           fi
-          echo "Release OK: $REL"
 
-      - name: Settle approved deposits, then enroll paid applicants
-        run: |
-          set -euo pipefail
-          cd "$APP_ROOT/backend/current"
+          BODY=$(jq -n --arg mode "$MODE" --arg application "$APPLICATION" '{mode: $mode, application: $application}')
 
-          FLAG=""
-          if [ "$MODE" = "apply" ]; then FLAG="--apply"; fi
-          APP_ARG=""
-          if [ -n "$APPLICATION" ]; then APP_ARG="--application=$APPLICATION"; fi
+          HTTP_CODE=$(curl -s --max-time 600 -o response.json -w "%{http_code}" \
+            -X POST \
+            -H "Authorization: Bearer $DEPLOY_KEY" \
+            -H "Content-Type: application/json" \
+            -d "$BODY" \
+            "$API_BASE/api/deploy/settle-admissions")
 
-          echo "== Mode: $MODE   Application: ${APPLICATION:-all}"
-          php -v | head -1
+          echo "HTTP $HTTP_CODE"
+          if ! jq -e . response.json >/dev/null 2>&1; then
+            echo "The server did not return JSON. Raw response:"
+            cat response.json || true
+            exit 1
+          fi
 
-          echo ""
-          echo "== Step 1: approved bordereau deposits onto admission bills"
-          php scripts/backfill_bordereau_allocations.php $FLAG $APP_ARG
+          jq -r '
+            "Mode: \(.data.mode)   Application: \(.data.application)",
+            "",
+            "Step 1, approved deposits onto bills: \(.data.deposits | length) application(s)",
+            (.data.deposits[]? | "  \(.application)  \(.results // "would apply" | tostring)"),
+            "",
+            "Step 2, enrolled (or would be enrolled): \(.data.enrolled | length)",
+            (.data.enrolled[]? | "  \(.application)  \(.name)"),
+            "",
+            "Still owing fees: \(.data.owing | length)",
+            (.data.owing[]? | "  \(.application)  \(.name)  owes \(.balance) RWF  pending deposits: \(.pending_deposits) (\(.pending_amount) RWF)"),
+            "",
+            "Failed: \(.data.failed | length)",
+            (.data.failed[]? | "  \(.application)  [\(.step)] \(.error)")
+          ' response.json | tee "$GITHUB_STEP_SUMMARY"
 
-          echo ""
-          echo "== Step 2: enroll applicants whose admission fees are fully paid"
-          php scripts/enroll_settled_applicants.php $FLAG $APP_ARG
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "The settlement reported failures (HTTP $HTTP_CODE). See the list above."
+            exit 1
+          fi
