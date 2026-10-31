@@ -13,6 +13,8 @@ use App\Models\UserCampusAssignmentModel;
 use App\Helpers\ValidationHelper;
 use App\Helpers\FileServerClient;
 use App\Services\SystemLogService;
+use App\Services\AcademicScopeService;
+use Core\Database;
 
 class UserController extends BaseController
 {
@@ -390,10 +392,43 @@ class UserController extends BaseController
              $updateData['is_active'] = (int)$data['is_active'];
         }
 
+        $oldRole = $this->roleNameOf((int)($user['role_id'] ?? 0));
+        $newRole = $this->roleNameOf($updateData['role_id']);
+
         $this->userModel->update($id, $updateData);
         $actor = (array) $request->param('_auth_user');
         SystemLogService::log('UPDATE', 'USERS', "Updated user '{$user['email']}' (ID {$id}).", $id, 'user', null, $actor ?: null);
+
+        // Dean / HOD / secretary scope comes from an admin-approved link. Demoting the user
+        // removes it, so a later promotion cannot restore it without a new approval.
+        if (AcademicScopeService::hasScopedRole(['role' => $oldRole]) && !AcademicScopeService::hasScopedRole(['role' => $newRole])) {
+            $db = Database::getInstance();
+            $db->execute(
+                'UPDATE leave_org_units u
+                   JOIN leave_org_unit_academic_links l ON l.unit_id = u.id
+                    SET u.head_user_id = NULL
+                  WHERE u.head_user_id = ?',
+                [$id]
+            );
+            $db->execute(
+                'UPDATE leave_org_units u
+                   JOIN leave_org_unit_academic_links l ON l.unit_id = u.id
+                    SET u.acting_user_id = NULL, u.acting_until = NULL
+                  WHERE u.acting_user_id = ?',
+                [$id]
+            );
+            $db->execute('DELETE FROM academic_secretaries WHERE user_id = ?', [$id]);
+            SystemLogService::log('UPDATE', 'USERS', "Removed Dean/HOD scope from user '{$user['email']}' (ID {$id}) after role change from '{$oldRole}' to '{$newRole}'.", $id, 'user', null, $actor ?: null);
+        }
+
         $this->success($response, null, 'User updated successfully.');
+    }
+
+    /** Lower-cased role name for an id, or '' when the role does not exist. */
+    private function roleNameOf(int $roleId): string
+    {
+        $role = $roleId > 0 ? $this->roleModel->find($roleId) : null;
+        return strtolower(trim((string)($role['name'] ?? '')));
     }
 
     /**

@@ -43,11 +43,17 @@ final class AcademicScopeService
         if (!array_key_exists($userId, self::$cache)) {
             // This runs on every request. If the scope tables are not there yet, fail
             // safe: Dean / HOD accounts get no access, everyone else keeps the normal view.
-            try {
-                // A head of a unit takes precedence; otherwise an assigned academic secretary.
-                $scope = self::resolve($userId) ?? self::resolveSecretary($userId);
-            } catch (\Throwable) {
-                $scope = null;
+            // Scope is granted only to a scoped role, and only through an admin-approved
+            // link. A role change alone never grants or keeps it: a user whose role is
+            // no longer Dean / HOD / secretary falls back to their normal role permissions.
+            $scope = null;
+            if (self::hasScopedRole($authUser)) {
+                try {
+                    // A head of a unit takes precedence; otherwise an assigned academic secretary.
+                    $scope = self::resolve($userId) ?? self::resolveSecretary($userId);
+                } catch (\Throwable) {
+                    $scope = null;
+                }
             }
             // Fail closed: a Dean / HOD / secretary account with no approved link sees nothing
             // until an admin approves its faculty or department.
