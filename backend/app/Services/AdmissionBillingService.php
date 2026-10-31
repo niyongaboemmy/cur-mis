@@ -838,6 +838,21 @@ class AdmissionBillingService
     }
 
     /**
+     * Enroll an applicant whose admission bills are all settled and who has not
+     * been enrolled yet. Used by the bulk enrollment script. Does nothing while any
+     * bill is still open. Enrollment failures are reported by onFullyPaid(), not thrown.
+     */
+    public function enrollIfSettled(int $applicationId): void
+    {
+        $summary = $this->invoices->summaryFor($applicationId);
+        if (!$summary['fully_paid']) {
+            return;
+        }
+
+        $this->onFullyPaid($applicationId);
+    }
+
+    /**
      * Settle admission bills from approved bordereau (bank deposit) submissions.
      *
      * Approving a bordereau marks the application paid, but on its own it leaves
