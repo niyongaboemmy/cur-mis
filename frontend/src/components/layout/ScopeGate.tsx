@@ -53,10 +53,14 @@ export default function ScopeGate({
       <div className="card-tight w-full max-w-md space-y-4">
         <div>
           <h1 className="text-lg font-semibold">
-            {scope.waiting ? "Waiting for approval" : "Choose your faculty or department"}
+            {scope.awaiting_assignment
+              ? "No department assigned yet"
+              : scope.waiting ? "Waiting for approval" : "Choose your faculty or department"}
           </h1>
           <p className="text-sm text-gray-600 mt-1">
-            {scope.waiting
+            {scope.awaiting_assignment
+              ? "Your account shows only the data of the department(s) assigned to you, and none is assigned yet. Ask an administrator to assign your department in Users management. This page opens as soon as it is assigned."
+              : scope.waiting
               ? `Your request for ${req?.fac_name ?? req?.dep_name ?? "your unit"} has been sent. An administrator will approve it. You will see your data once it is approved.`
               : "Your account is a Dean, Head of Department or academic secretary. Choose the faculty or department you manage. An administrator will confirm it before you see any data."}
           </p>

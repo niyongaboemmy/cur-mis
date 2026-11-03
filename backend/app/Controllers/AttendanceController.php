@@ -235,6 +235,8 @@ class AttendanceController extends BaseController
                     FROM modules m
                     JOIN module_assignments ma ON ma.module_id = m.module_id
                     WHERE m.status = 'active'"
+                // Dean / HOD / department-locked: only the modules in their departments.
+                . \App\Services\AcademicScopeService::moduleClause((array)($request->param('_auth_user') ?? []), 'm.module_id')
                 . ($termId > 0 ? " AND ma.academic_term_id = ?" : "")
                 . " ORDER BY m.module_code ASC
                     LIMIT 500";
@@ -816,6 +818,17 @@ class AttendanceController extends BaseController
      */
     private function ensureCanReadStudent(Request $request, Response $response, string $reg): void
     {
+        // Dean / HOD / secretary / department-locked account: every student of their
+        // departments, whether or not the student has module registrations.
+        $scope = \App\Services\AcademicScopeService::forUser((array)($request->param('_auth_user') ?? []));
+        if ($scope !== null) {
+            $row = $reg === '' ? null : $this->db->fetchOne('SELECT department FROM student WHERE regnumber = ? LIMIT 1', [$reg]);
+            if (!$row || !\App\Services\AcademicScopeService::allowsDepartment($scope, $row['department'])) {
+                $this->error($response, 'Student not found.', 404);
+            }
+            return;
+        }
+
         $allowed = $this->teachableModuleIds($request);
         if ($allowed === null) {
             return; // full scope

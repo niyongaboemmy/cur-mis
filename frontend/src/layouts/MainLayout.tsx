@@ -1612,7 +1612,7 @@ export default function MainLayout() {
 
   return (
     <div className="h-screen flex flex-col bg-[rgb(var(--bg-app))] text-ink-800 dark:text-ink-100 overflow-hidden">
-      {(academicScope.needs_choice || academicScope.waiting) && (
+      {(academicScope.needs_choice || academicScope.waiting || academicScope.awaiting_assignment) && (
         <ScopeGate scope={academicScope} onSubmitted={refreshScope} />
       )}
       <ModuleRequestGate />

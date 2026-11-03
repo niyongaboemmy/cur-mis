@@ -242,6 +242,10 @@ class ModuleAssignmentRequestController extends BaseController
         if (AuthService::isSuperadmin($authUser)) {
             return true;
         }
+        // A department-locked account (Dean, HOD, secretary, …) stays inside its scope even with MANAGE_USERS.
+        if (AcademicScopeService::forUser($authUser) !== null) {
+            return false;
+        }
         return in_array(Permissions::MANAGE_USERS, (array) ($authUser['permissions'] ?? []), true);
     }
 

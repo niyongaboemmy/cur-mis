@@ -255,6 +255,13 @@ class LecturerPlacementController extends BaseController
               ORDER BY m.module_code",
             [$userId, $termId]
         );
+        // A Dean / HOD / secretary sees and changes only the modules in their own scope.
+        if (!$isAdmin) {
+            $assigned = array_values(array_filter(
+                $assigned,
+                fn ($m) => AcademicScopeService::allowsDepartment($scope, $m['department'])
+            ));
+        }
 
         // Narrow to the lecturer's placement: department (or faculty) and programme option, when given.
         $facId = (int) ($request->query('fac_id') ?? 0);
@@ -403,6 +410,10 @@ class LecturerPlacementController extends BaseController
     {
         if (AuthService::isSuperadmin($authUser)) {
             return true;
+        }
+        // A department-locked account (Dean, HOD, secretary, …) stays inside its scope even with MANAGE_USERS.
+        if (AcademicScopeService::forUser($authUser) !== null) {
+            return false;
         }
         return in_array(Permissions::MANAGE_USERS, (array) ($authUser['permissions'] ?? []), true);
     }

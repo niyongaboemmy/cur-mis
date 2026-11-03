@@ -110,6 +110,9 @@ class RoleController extends BaseController
         if (array_key_exists('enforce_campus_scope', $data)) {
             $update['enforce_campus_scope'] = !empty($data['enforce_campus_scope']) ? 1 : 0;
         }
+        if (array_key_exists('enforce_department_scope', $data)) {
+            $update['enforce_department_scope'] = !empty($data['enforce_department_scope']) ? 1 : 0;
+        }
         $this->roleModel->update($id, $update);
 
         $actor = (array) $request->param('_auth_user');
@@ -141,7 +144,7 @@ class RoleController extends BaseController
     public function assignPermissions(Request $request, Response $response): never
     {
         $id = (int)$request->param('id');
-        $data = $request->body(); // Expecting json: { "permissions": [1, 5, 8], "enforce_campus_scope"?: 0|1 }
+        $data = $request->body(); // Expecting json: { "permissions": [1, 5, 8], "enforce_campus_scope"?: 0|1, "enforce_department_scope"?: 0|1 }
 
         if (!$this->roleModel->find($id)) {
             $this->error($response, 'Role not found', 404);
@@ -177,12 +180,16 @@ class RoleController extends BaseController
             );
         }
 
-        // The Permissions modal saves the campus-scope toggle alongside the
-        // permission grid in one request, so accept it here as a convenience.
-        if (array_key_exists('enforce_campus_scope', $data)) {
-            $this->roleModel->update($id, [
-                'enforce_campus_scope' => !empty($data['enforce_campus_scope']) ? 1 : 0,
-            ]);
+        // The Permissions modal saves the campus- and department-scope toggles
+        // alongside the permission grid in one request, so accept them here as a convenience.
+        $scopeFlags = [];
+        foreach (['enforce_campus_scope', 'enforce_department_scope'] as $flag) {
+            if (array_key_exists($flag, $data)) {
+                $scopeFlags[$flag] = !empty($data[$flag]) ? 1 : 0;
+            }
+        }
+        if ($scopeFlags) {
+            $this->roleModel->update($id, $scopeFlags);
         }
 
         $this->syncLeaveStageBindings($id);

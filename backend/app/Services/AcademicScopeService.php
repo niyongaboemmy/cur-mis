@@ -8,24 +8,34 @@ use App\Constants\Permissions;
 use Core\Database;
 
 /**
- * Narrows what a Dean or Head of Department sees in the academic modules.
+ * Narrows what a department-locked account sees in the academic modules.
  *
- * A user is scoped when they are the head (or an active acting head) of an
- * organisation unit linked in `leave_org_unit_academic_links`. Faculty links
- * (Dean) cover every department in that faculty; department links (HOD) cover
- * only that department. Superadmins and everyone without a linked unit get
- * `null` — no restriction — so every other role keeps the current behaviour.
+ * A role is locked when "Show only data from assigned department(s)" is on
+ * (`roles.enforce_department_scope`). A locked user's departments come from:
+ *   - the organisation units they head (or act for) that are linked in
+ *     `leave_org_unit_academic_links` — faculty links (Dean) cover every
+ *     department in that faculty, department links (HOD) only that department;
+ *   - otherwise an academic secretary assignment (`academic_secretaries`);
+ *   - plus any department an administrator assigned in Users management
+ *     (`user_department_assignments`).
+ * Superadmins and users of unlocked roles get `null` — no restriction.
  */
 final class AcademicScopeService
 {
     /**
-     * Role names (lower-case) that are always scoped. Add a role name here when
-     * a new Dean or HOD role is created.
+     * Role names (lower-case) that choose their faculty or department at first
+     * login and wait for approval (Dean, HOD, academic secretary). Other locked
+     * roles get their departments from an administrator in Users management.
+     * Also the lock list used when `roles.enforce_department_scope` does not
+     * exist yet (before migration 2026_11_03_001).
      */
     public const SCOPED_ROLES = ['dean', 'hod', 'head of department', 'dean of faculty', 'academic secretary'];
 
     /** @var array<int, array{level:string,faculty_ids:int[],department_ids:int[],unit_ids:int[]}|null> */
     private static array $cache = [];
+
+    /** @var array<string, bool> role id or name => department lock on */
+    private static array $roleLockCache = [];
 
     /**
      * @return array{level:string,faculty_ids:int[],department_ids:int[],unit_ids:int[]}|null
@@ -54,9 +64,10 @@ final class AcademicScopeService
                 } catch (\Throwable) {
                     $scope = null;
                 }
+                $scope = self::withAssignedDepartments($scope, $userId);
             }
-            // Fail closed: a Dean / HOD / secretary account with no approved link sees nothing
-            // until an admin approves its faculty or department.
+            // Fail closed: a locked account with no approved link and no assigned department
+            // sees nothing until an admin approves or assigns its faculty or department.
             if ($scope === null && self::hasScopedRole($authUser)) {
                 $scope = ['level' => 'none', 'kind' => 'none', 'faculty_ids' => [], 'department_ids' => [], 'unit_ids' => []];
             }
@@ -81,8 +92,39 @@ final class AcademicScopeService
         return $role === 'lecturer' && self::forUser($authUser) === null;
     }
 
-    /** True for accounts whose role must be scoped (matched case-insensitively). */
+    /**
+     * True for accounts whose role is locked to its departments
+     * (`roles.enforce_department_scope`). Looked up by role id when the account
+     * carries one, otherwise by role name.
+     */
     public static function hasScopedRole(array $authUser): bool
+    {
+        $role   = strtolower(trim((string)($authUser['role'] ?? $authUser['role_name'] ?? '')));
+        $roleId = (int)($authUser['role_id'] ?? 0);
+        $key    = $roleId > 0 ? "id:{$roleId}" : "name:{$role}";
+
+        if (!array_key_exists($key, self::$roleLockCache)) {
+            try {
+                $row = $roleId > 0
+                    ? Database::getInstance()->fetchOne('SELECT enforce_department_scope FROM roles WHERE id = ?', [$roleId])
+                    : Database::getInstance()->fetchOne('SELECT enforce_department_scope FROM roles WHERE LOWER(TRIM(name)) = ? LIMIT 1', [$role]);
+                self::$roleLockCache[$key] = $row
+                    ? (int)($row['enforce_department_scope'] ?? 0) === 1
+                    : in_array($role, self::SCOPED_ROLES, true);
+            } catch (\Throwable) {
+                // Column not there yet: keep the role-name list.
+                self::$roleLockCache[$key] = in_array($role, self::SCOPED_ROLES, true);
+            }
+        }
+        return self::$roleLockCache[$key];
+    }
+
+    /**
+     * True for Dean, HOD and academic secretary accounts, which choose their faculty
+     * or department at first login and wait for approval. Other locked accounts wait
+     * for an administrator to assign their departments in Users management.
+     */
+    public static function usesRequestFlow(array $authUser): bool
     {
         $role = strtolower(trim((string)($authUser['role'] ?? $authUser['role_name'] ?? '')));
         return in_array($role, self::SCOPED_ROLES, true);
@@ -301,20 +343,78 @@ final class AcademicScopeService
         }
         $departmentIds = array_values(array_unique($departmentIds));
 
-        // Org units linked to these faculties / departments, and the units below them.
-        $unitIds = [];
-        if ($facultyIds || $departmentIds) {
-            $conds  = [];
-            $params = [];
-            if ($facultyIds) {
-                $conds[] = 'l.fac_id IN (' . implode(',', array_fill(0, count($facultyIds), '?')) . ')';
-                $params  = array_merge($params, $facultyIds);
+        return [
+            'level'          => $level,
+            'kind'           => 'secretary',
+            'faculty_ids'    => $facultyIds,
+            'department_ids' => $departmentIds,
+            'unit_ids'       => self::unitIdsFor($facultyIds, $departmentIds),
+        ];
+    }
+
+    /**
+     * Adds the departments an administrator assigned to the user. A user with
+     * assigned departments and no other link gets a department scope of kind
+     * `assigned`.
+     *
+     * @param array{level:string,kind:string,faculty_ids:int[],department_ids:int[],unit_ids:int[]}|null $scope
+     * @return array{level:string,kind:string,faculty_ids:int[],department_ids:int[],unit_ids:int[]}|null
+     */
+    private static function withAssignedDepartments(?array $scope, int $userId): ?array
+    {
+        try {
+            $rows = Database::getInstance()->fetchAll(
+                'SELECT dep_id FROM user_department_assignments WHERE user_id = ?',
+                [$userId]
+            );
+            $assigned = array_map(static fn ($r) => (int)$r['dep_id'], $rows);
+            if ($assigned === []) {
+                return $scope;
             }
-            if ($departmentIds) {
-                $conds[] = 'l.dep_id IN (' . implode(',', array_fill(0, count($departmentIds), '?')) . ')';
-                $params  = array_merge($params, $departmentIds);
+
+            if ($scope === null) {
+                return [
+                    'level'          => 'department',
+                    'kind'           => 'assigned',
+                    'faculty_ids'    => [],
+                    'department_ids' => $assigned,
+                    'unit_ids'       => self::unitIdsFor([], $assigned),
+                ];
             }
-            $unitRows = $db->fetchAll(
+
+            $scope['department_ids'] = array_values(array_unique(array_merge($scope['department_ids'], $assigned)));
+            $scope['unit_ids']       = array_values(array_unique(array_merge($scope['unit_ids'], self::unitIdsFor([], $assigned))));
+            return $scope;
+        } catch (\Throwable) {
+            // Assignment table not there yet: keep the scope from the other sources.
+            return $scope;
+        }
+    }
+
+    /**
+     * Org units linked to these faculties / departments, and the units below them.
+     *
+     * @param int[] $facultyIds
+     * @param int[] $departmentIds
+     * @return int[]
+     */
+    private static function unitIdsFor(array $facultyIds, array $departmentIds): array
+    {
+        if (!$facultyIds && !$departmentIds) {
+            return [];
+        }
+        $conds  = [];
+        $params = [];
+        if ($facultyIds) {
+            $conds[] = 'l.fac_id IN (' . implode(',', array_fill(0, count($facultyIds), '?')) . ')';
+            $params  = array_merge($params, $facultyIds);
+        }
+        if ($departmentIds) {
+            $conds[] = 'l.dep_id IN (' . implode(',', array_fill(0, count($departmentIds), '?')) . ')';
+            $params  = array_merge($params, $departmentIds);
+        }
+        try {
+            $unitRows = Database::getInstance()->fetchAll(
                 "WITH RECURSIVE tree AS (
                     SELECT l.unit_id AS id FROM leave_org_unit_academic_links l WHERE " . implode(' OR ', $conds) . "
                     UNION
@@ -323,15 +423,10 @@ final class AcademicScopeService
                  SELECT id FROM tree",
                 $params
             );
-            $unitIds = array_map(static fn ($r) => (int)$r['id'], $unitRows);
+        } catch (\Throwable) {
+            // Leave-app org tables missing: the departments still apply, only the staff list is empty.
+            return [];
         }
-
-        return [
-            'level'          => $level,
-            'kind'           => 'secretary',
-            'faculty_ids'    => $facultyIds,
-            'department_ids' => $departmentIds,
-            'unit_ids'       => $unitIds,
-        ];
+        return array_map(static fn ($r) => (int)$r['id'], $unitRows);
     }
 }

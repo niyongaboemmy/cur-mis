@@ -280,6 +280,8 @@ class ModulesManagementController extends BaseController
             'term_id'   => $request->query('term_id'),
             'staff_id'  => $request->query('staff_id'),
             'module_id' => $request->query('module_id'),
+            // Dean / HOD: only assignments in their departments (null = unrestricted).
+            'department_ids' => AcademicScopeService::scopeDepartmentIds((array)($request->param('_auth_user') ?? [])),
         ];
         $this->success($response, $this->assignments->listWithJoins($filters), 'Assignments fetched.');
     }
@@ -408,7 +410,10 @@ class ModulesManagementController extends BaseController
         if (!$termId) {
             $this->error($response, 'term_id is required.', 422);
         }
-        $rows = $this->assignments->workloadByStaff($termId);
+        $rows = $this->assignments->workloadByStaff(
+            $termId,
+            AcademicScopeService::scopeDepartmentIds((array)($request->param('_auth_user') ?? []))
+        );
         $this->success($response, $rows, 'Workload summary fetched.');
     }
 

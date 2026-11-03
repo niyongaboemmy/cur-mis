@@ -22,11 +22,14 @@ import {
   UserX,
   Filter,
   Building2,
+  Layers,
   Trash2,
   HelpCircle,
   KeyRound,
 } from "lucide-react";
-import userService, { User, UserStats, UserFilters, UserCampusAssignment } from "@/services/userService";
+import userService, {
+  User, UserStats, UserFilters, UserCampusAssignment, UserDepartmentAssignment, DepartmentCatalogItem,
+} from "@/services/userService";
 import { rbacService, Role } from "@/services/rbacService";
 import { useQuery } from "@tanstack/react-query";
 import SearchableSelect from "@/components/ui/SearchableSelect";
@@ -118,6 +121,15 @@ export default function UsersManagementPage() {
   const [userCampuses, setUserCampuses]             = useState<UserCampusAssignment[]>([]);
   const [campusAssignmentBusy, setCampusAssignmentBusy] = useState(false);
   const [selectedCampusToAdd, setSelectedCampusToAdd]   = useState<string>("");
+
+  // ── Department assignment state (department lock) ─────────────────────────
+  const [departmentCatalog, setDepartmentCatalog]           = useState<DepartmentCatalogItem[]>([]);
+  const [userDepartments, setUserDepartments]               = useState<UserDepartmentAssignment[]>([]);
+  const [departmentAssignmentBusy, setDepartmentAssignmentBusy] = useState(false);
+
+  /** True when the role has "Show only data from assigned department(s)" on. */
+  const isDepartmentLocked = (roleId: number | string | undefined) =>
+    Boolean(Number(roles.find((r) => r.id === Number(roleId))?.enforce_department_scope ?? 0));
 
   const searchTimeout   = useRef<NodeJS.Timeout | null>(null);
   const abortController = useRef<AbortController | null>(null);
@@ -225,12 +237,24 @@ export default function UsersManagementPage() {
         // Soft-fail — the campus block just shows empty, the rest of the modal still works.
         setUserCampuses([]);
       }
+      // Same for departments: this user's assignments + the department catalogue.
+      try {
+        const [assignmentsRes, catalogRes] = await Promise.all([
+          userService.listDepartmentAssignments(user.id),
+          departmentCatalog.length ? Promise.resolve(null) : userService.listAllDepartments(),
+        ]);
+        setUserDepartments(assignmentsRes.data?.assignments ?? []);
+        if (catalogRes) setDepartmentCatalog(catalogRes.data?.departments ?? []);
+      } catch {
+        setUserDepartments([]);
+      }
     } else {
       setEditingUser(null);
       setFormData({ full_name: "", email: "", username: "", password: "", role_id: "",
         gender: "", phone: "", department: "", faculty: "",
         salary: "", idcard: "", address: "", employment_status: "Permanent" });
       setUserCampuses([]);
+      setUserDepartments([]);
     }
     setSelectedCampusToAdd("");
     setShowModal(true);
@@ -269,6 +293,36 @@ export default function UsersManagementPage() {
       toast.error(err.response?.data?.message ?? "Failed to remove campus");
     } finally {
       setCampusAssignmentBusy(false);
+    }
+  };
+
+  const handleAssignDepartment = async (depId: number) => {
+    if (!editingUser) return;
+    setDepartmentAssignmentBusy(true);
+    try {
+      const res = await userService.assignDepartment(editingUser.id, depId);
+      setUserDepartments(res.data?.assignments ?? []);
+      toast.success("Department assigned");
+      fetchData();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message ?? "Failed to assign department");
+    } finally {
+      setDepartmentAssignmentBusy(false);
+    }
+  };
+
+  const handleRevokeDepartment = async (depId: number) => {
+    if (!editingUser) return;
+    setDepartmentAssignmentBusy(true);
+    try {
+      const res = await userService.revokeDepartment(editingUser.id, depId);
+      setUserDepartments(res.data?.assignments ?? []);
+      toast.success("Department removed");
+      fetchData();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message ?? "Failed to remove department");
+    } finally {
+      setDepartmentAssignmentBusy(false);
     }
   };
 
@@ -624,6 +678,7 @@ export default function UsersManagementPage() {
                   <th>Role</th>
                   <th>Status</th>
                   <th>Assigned campus</th>
+                  <th>Departments</th>
                   <th>OTP</th>
                   <th className="text-right">Actions</th>
                 </tr>
@@ -636,13 +691,14 @@ export default function UsersManagementPage() {
                       <td><div className="h-5 w-20 bg-ink-100 dark:bg-ink-700 rounded-full" /></td>
                       <td><div className="h-5 w-14 bg-ink-100 dark:bg-ink-700 rounded-full" /></td>
                       <td><div className="h-5 w-24 bg-ink-100 dark:bg-ink-700 rounded-full" /></td>
+                      <td><div className="h-5 w-24 bg-ink-100 dark:bg-ink-700 rounded-full" /></td>
                       <td><div className="h-5 w-16 bg-ink-100 dark:bg-ink-700 rounded-md" /></td>
                       <td><div className="h-6 w-12 ml-auto bg-ink-100 dark:bg-ink-700 rounded" /></td>
                     </tr>
                   ))
                 ) : users.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="text-center py-12 text-ink-500 text-[12.5px]">
+                    <td colSpan={7} className="text-center py-12 text-ink-500 text-[12.5px]">
                       {activeFilterCount > 0 || search
                         ? "No users match your search and filters."
                         : "No users found."}
@@ -708,6 +764,38 @@ export default function UsersManagementPage() {
                         ) : (
                           <span className="text-[11.5px] italic text-ink-400">All campuses</span>
                         )}
+                      </td>
+                      <td>
+                        {(() => {
+                          const locked = isDepartmentLocked(user.role_id);
+                          const deps = user.department_assignments ?? [];
+                          if (deps.length > 0) {
+                            return (
+                              <div className="flex flex-wrap gap-1 max-w-[280px]">
+                                {deps.map((d) => (
+                                  <span
+                                    key={d.id}
+                                    title={locked ? d.name : `${d.name} — has no effect until this role's department lock is on`}
+                                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-200 text-[11px] font-medium ${locked ? "" : "opacity-50"}`}
+                                  >
+                                    <Layers className="w-2.5 h-2.5" />
+                                    {d.acronym || d.name}
+                                  </span>
+                                ))}
+                              </div>
+                            );
+                          }
+                          return locked ? (
+                            <span
+                              className="text-[11.5px] italic text-amber-600"
+                              title="This role only shows assigned departments. Unless the user is an approved Dean, HOD or secretary, they see no academic data until a department is assigned."
+                            >
+                              Not assigned
+                            </span>
+                          ) : (
+                            <span className="text-[11.5px] italic text-ink-400">All departments</span>
+                          );
+                        })()}
                       </td>
                       <td>
                         {user.otp_code ? (
@@ -1038,6 +1126,90 @@ export default function UsersManagementPage() {
                     </select>
                     <p className="text-[10.5px] text-ink-400 mt-1">
                       Picking a campus assigns it immediately. Use the trash icon to remove.
+                    </p>
+                  </div>
+                )}
+
+                {editingUser && (
+                  <div className="pt-2 mt-2 border-t hairline">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Layers className="w-3.5 h-3.5 text-primary-600" />
+                      <h3 className="text-[12.5px] font-semibold text-ink-900 dark:text-white">Department assignments</h3>
+                    </div>
+                    <p className="text-[11px] text-ink-500 mb-2.5">
+                      Limit this user to the department(s) below: dashboard, students, programmes and
+                      modules, marks, attendance, exams and staff.
+                    </p>
+                    {isDepartmentLocked(formData.role_id) ? (
+                      userDepartments.length === 0 && (
+                        <p className="text-[11px] text-amber-700 bg-amber-50 dark:bg-amber-900/20 rounded-md px-2 py-1.5 mb-2.5">
+                          This role only shows assigned departments. Assign at least one, or the user
+                          sees no academic data (unless they are an approved Dean, HOD or secretary).
+                        </p>
+                      )
+                    ) : (
+                      <p className="text-[11px] text-ink-500 bg-ink-50 dark:bg-ink-800 rounded-md px-2 py-1.5 mb-2.5">
+                        These departments take effect only when the role has “Show only data from
+                        assigned department(s)” switched on in Roles → Permissions.
+                      </p>
+                    )}
+
+                    {userDepartments.length === 0 ? (
+                      <p className="text-[11.5px] text-ink-500 italic mb-2">No departments assigned yet.</p>
+                    ) : (
+                      <div className="flex flex-wrap gap-1.5 mb-2.5">
+                        {userDepartments.map((d) => (
+                          <span
+                            key={d.assignment_id}
+                            title={d.fac_name ? `${d.name} — ${d.fac_name}` : d.name}
+                            className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-200 text-[11.5px] font-medium"
+                          >
+                            <Layers className="w-3 h-3" />
+                            {d.name}
+                            <button
+                              type="button"
+                              onClick={() => handleRevokeDepartment(d.id)}
+                              disabled={departmentAssignmentBusy}
+                              className="ml-0.5 text-primary-700/70 hover:text-red-600 disabled:opacity-50"
+                              title={`Remove ${d.name}`}
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    <select
+                      className="input text-[12px]"
+                      value=""
+                      onChange={(e) => {
+                        // Assigns as soon as a department is picked, like campuses.
+                        if (e.target.value) handleAssignDepartment(Number(e.target.value));
+                      }}
+                      disabled={departmentAssignmentBusy}
+                    >
+                      <option value="">+ Add a department…</option>
+                      {Object.entries(
+                        departmentCatalog
+                          .filter((d) => !userDepartments.some((ud) => ud.id === d.id))
+                          .reduce<Record<string, DepartmentCatalogItem[]>>((groups, d) => {
+                            const faculty = d.fac_name || "Other";
+                            (groups[faculty] ??= []).push(d);
+                            return groups;
+                          }, {}),
+                      ).map(([faculty, deps]) => (
+                        <optgroup key={faculty} label={faculty}>
+                          {deps.map((d) => (
+                            <option key={d.id} value={d.id}>
+                              {d.name}{d.acronym ? ` (${d.acronym})` : ""}
+                            </option>
+                          ))}
+                        </optgroup>
+                      ))}
+                    </select>
+                    <p className="text-[10.5px] text-ink-400 mt-1">
+                      Picking a department assigns it immediately. Use the trash icon to remove.
                     </p>
                   </div>
                 )}

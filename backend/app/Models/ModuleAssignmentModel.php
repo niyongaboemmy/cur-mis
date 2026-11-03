@@ -19,12 +19,22 @@ class ModuleAssignmentModel extends BaseModel
     ];
 
     /**
-     * @param array{term_id?:int,staff_id?:int,module_id?:int} $filters
+     * @param array{term_id?:int,staff_id?:int,module_id?:int,department_ids?:int[]|null} $filters
      */
     public function listWithJoins(array $filters = []): array
     {
         $where    = [];
         $bindings = [];
+
+        // Dean / HOD / department-locked: limit to modules in their departments (null = unrestricted).
+        if (isset($filters['department_ids']) && is_array($filters['department_ids'])) {
+            if ($filters['department_ids'] === []) {
+                $where[] = '1 = 0';
+            } else {
+                $where[] = 'm.department IN (' . implode(',', array_fill(0, count($filters['department_ids']), '?')) . ')';
+                foreach ($filters['department_ids'] as $dep) { $bindings[] = (int)$dep; }
+            }
+        }
 
         if (!empty($filters['term_id'])) {
             $where[]    = 'a.academic_term_id = ?';
@@ -69,9 +79,22 @@ class ModuleAssignmentModel extends BaseModel
      *
      * @return array<int,array{staff_id:int,staff_name:string,module_count:int,total_hours:float}>
      */
-    public function workloadByStaff(int $termId): array
+    public function workloadByStaff(int $termId, ?array $departmentIds = null): array
     {
         $off = InstructorDirectory::USER_OFFSET;
+
+        // Dean / HOD / department-locked: count only modules in their departments (null = unrestricted).
+        $scopeSql = '';
+        $bindings = [$termId];
+        if ($departmentIds !== null) {
+            if ($departmentIds === []) {
+                $scopeSql = ' AND 1 = 0';
+            } else {
+                $scopeSql = ' AND a.module_id IN (SELECT module_id FROM `modules` WHERE department IN ('
+                    . implode(',', array_fill(0, count($departmentIds), '?')) . '))';
+                foreach ($departmentIds as $dep) { $bindings[] = (int)$dep; }
+            }
+        }
 
         return $this->db->fetchAll(
             "SELECT a.staff_id,
@@ -81,10 +104,10 @@ class ModuleAssignmentModel extends BaseModel
              FROM `module_assignments` a
              LEFT JOIN `hr_employees` e ON e.id = a.staff_id AND a.staff_id < {$off}
              LEFT JOIN `users` u        ON u.id = a.staff_id - {$off} AND a.staff_id >= {$off}
-             WHERE a.academic_term_id = ?
+             WHERE a.academic_term_id = ?{$scopeSql}
              GROUP BY a.staff_id, e.full_name, u.full_name
              ORDER BY total_hours DESC",
-            [$termId]
+            $bindings
         );
     }
 }
