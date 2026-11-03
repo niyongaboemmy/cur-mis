@@ -20,9 +20,12 @@
 
 declare(strict_types=1);
 
-require_once dirname(__DIR__) . '/config/database.php';
-require_once dirname(__DIR__) . '/core/Database.php';
 require_once dirname(__DIR__) . '/vendor/autoload.php';
+
+// Load backend/.env into $_ENV, the same way public/index.php does.
+Dotenv\Dotenv::createImmutable(dirname(__DIR__))->load();
+
+require_once dirname(__DIR__) . '/core/Database.php';
 
 use App\Models\ApplicationInvoiceModel;
 use App\Services\AdmissionBillingService;
@@ -98,6 +101,22 @@ foreach ($candidates as $row) {
     if (!$summary['fully_paid']) {
         $owing++;
         printf("  %s owes %s RWF, skipped\n", $label, number_format((float)$summary['balance'], 0));
+
+        $pending = $db->fetchOne(
+            "SELECT COUNT(*) AS cnt, COALESCE(SUM(amount), 0) AS total
+               FROM `bordereau_submissions`
+              WHERE application_id = ? AND status = 'pending'",
+            [$appId]
+        ) ?: [];
+        if ((int)($pending['cnt'] ?? 0) > 0) {
+            printf(
+                "      %d pending deposit(s) totalling %s RWF await Finance approval\n",
+                (int)$pending['cnt'],
+                number_format((float)$pending['total'], 0)
+            );
+        } else {
+            echo "      no pending deposit: the balance has not been paid or recorded\n";
+        }
         continue;
     }
 

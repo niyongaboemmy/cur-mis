@@ -233,6 +233,11 @@ const NAV_TREE: NavNode[] = [
         hideForRoles: ["student", "applicant"],
       },
       {
+        to: "/my-students",
+        label: "My students",
+        hideForRoles: ["student", "applicant"],
+      },
+      {
         to: "/attendance",
         label: "Attendance",
         permissions: [PERMISSIONS.RECORD_ATTENDANCE, PERMISSIONS.VIEW_ATTENDANCE],
@@ -1172,9 +1177,17 @@ const ROUTE_TITLES: Record<string, { title: string; sub?: string }> = {
     title: "Billing",
     sub: "Billing system",
   },
+  "/finance/fee-types": {
+    title: "Fee Types",
+    sub: "Categories used to classify fees across the system",
+  },
   "/finance/dashboard-system": {
     title: "Finance Dashboard",
     sub: "Collection overview",
+  },
+  "/finance/fee-rates-system": {
+    title: "Fee Rates",
+    sub: "Fee amounts per type, year and department",
   },
   "/finance/structures": {
     title: "Fee Rates",

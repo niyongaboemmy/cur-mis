@@ -59,6 +59,7 @@ import PartTimePage from "@/pages/hr/PartTimePage";
 import LeavePhpPage from "@/pages/hr/LeavePhpPage";
 import MyPayslipsPhpPage from "@/pages/hr/MyPayslipsPhpPage";
 import PartTimePage from "@/pages/hr/PartTimePage";
+import LeaveRequestsPhpPage from "@/pages/hr/LeaveRequestsPhpPage";
 import ContractManagementPage from "@/pages/hr/ContractManagementPage";
 import HrMonitoringDashboard from "@/pages/hr/HrMonitoringDashboard";
 import PerformanceMonitoringPage from "@/pages/hr/PerformanceMonitoringPage";
@@ -160,6 +161,7 @@ import StudentLedgerPage from "@/pages/finance/StudentLedgerPage";
 import StudentBillingPage from "@/pages/finance/StudentBillingPage";
 import BillingPhpPage from "@/pages/finance/BillingPhpPage";
 import DashboardPhpPage from "@/pages/finance/DashboardPhpPage";
+import FeeRatesPhpPage from "@/pages/finance/FeeRatesPhpPage";
 import PaymentApprovalsPage from "@/pages/finance/PaymentApprovalsPage";
 import BordereauVerificationPage from "@/pages/finance/BordereauVerificationPage";
 import FeeStructuresPage from "@/pages/finance/FeeStructuresPage";
@@ -924,6 +926,7 @@ function App() {
               >
                 <Route path="/finance/billing-system" element={<BillingPhpPage />} />
                 <Route path="/finance/dashboard-system" element={<DashboardPhpPage />} />
+                <Route path="/finance/fee-rates-system" element={<FeeRatesPhpPage />} />
                 <Route path="/finance" element={<FinanceHub />}>
                   <Route index element={<FinanceOverviewPage />} />
                   <Route path="billing" element={<StudentBillingPage />} />

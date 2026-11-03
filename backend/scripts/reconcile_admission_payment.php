@@ -24,9 +24,13 @@
 
 declare(strict_types=1);
 
-require_once dirname(__DIR__) . '/config/database.php';
-require_once dirname(__DIR__) . '/core/Database.php';
 require_once dirname(__DIR__) . '/vendor/autoload.php';
+
+// Load backend/.env into $_ENV, the same way public/index.php does, so the
+// database settings come from the environment this script runs in.
+Dotenv\Dotenv::createImmutable(dirname(__DIR__))->load();
+
+require_once dirname(__DIR__) . '/core/Database.php';
 
 use App\Services\AdmissionBillingService;
 use Core\Database;
