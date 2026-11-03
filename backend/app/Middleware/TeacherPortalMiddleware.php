@@ -24,8 +24,9 @@ use Core\Response;
  *
  * Allowed when ANY of these hold:
  *   1. superadmin (bypasses every permission check app-wide)
- *   2. the account holds ACCESS_TEACHER_PORTAL
- *   3. the account is assigned to at least one module
+ *   2. the account is a staff account (any role except student or applicant)
+ *   3. the account holds ACCESS_TEACHER_PORTAL
+ *   4. the account is assigned to at least one module
  *
  * Note that this only opens the DOOR. Every endpoint behind it is still scoped
  * to the caller's own assignments by LecturerScope, so a non-lecturer who is
@@ -44,6 +45,12 @@ class TeacherPortalMiddleware
         $user = (array) $user;
 
         if (AuthService::isSuperadmin($user)) {
+            return;
+        }
+
+        // Staff accounts may open the workspace. Students and applicants have
+        // their own portals and are kept out.
+        if (!in_array((string) ($user['role'] ?? ''), ['student', 'applicant'], true)) {
             return;
         }
 

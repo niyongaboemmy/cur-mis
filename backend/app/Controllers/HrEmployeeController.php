@@ -585,6 +585,18 @@ class HrEmployeeController extends BaseController
     {
         $db = $this->employeeModel->db();
 
+        // Dean / HOD / department-locked: only staff placed in their faculty or department unit.
+        $scope    = AcademicScopeService::forUser((array)($request->param('_auth_user') ?? []));
+        $staffIds = AcademicScopeService::staffUserIds($scope);
+        $scopeSql = '';
+        $scopeArg = [];
+        if ($staffIds !== null) {
+            $scopeSql = $staffIds === []
+                ? ' AND 1=0'
+                : ' AND user_id IN (' . implode(',', array_fill(0, count($staffIds), '?')) . ')';
+            $scopeArg = $staffIds;
+        }
+
         $row = $db->fetchOne("
             SELECT
               COUNT(*)                                                                        AS `total`,
@@ -598,24 +610,25 @@ class HrEmployeeController extends BaseController
               COUNT(DISTINCT employee_post) AS `departments`,
               COUNT(DISTINCT employee_position) AS `active_positions`
             FROM employees
-        ") ?: [];
+            WHERE 1=1{$scopeSql}
+        ", $scopeArg) ?: [];
 
         $byDept = $db->fetchAll("
             SELECT employee_post AS value, employee_post AS label, COUNT(*) AS total
             FROM employees
-            WHERE account_status = 'Active' AND employee_post IS NOT NULL AND employee_post <> ''
+            WHERE account_status = 'Active' AND employee_post IS NOT NULL AND employee_post <> ''{$scopeSql}
             GROUP BY employee_post ORDER BY total DESC LIMIT 12
-        ");
+        ", $scopeArg);
 
         $byPosition = $db->fetchAll("
             SELECT employee_position AS value, employee_position AS label, COUNT(*) AS total
             FROM employees
-            WHERE account_status = 'Active' AND employee_position IS NOT NULL AND employee_position <> ''
+            WHERE account_status = 'Active' AND employee_position IS NOT NULL AND employee_position <> ''{$scopeSql}
             GROUP BY employee_position ORDER BY total DESC LIMIT 12
-        ");
+        ", $scopeArg);
 
-        $deptFacet = $db->fetchAll("SELECT DISTINCT employee_post AS v FROM employees WHERE employee_post IS NOT NULL AND employee_post <> '' ORDER BY employee_post ASC");
-        $posFacet  = $db->fetchAll("SELECT DISTINCT employee_position AS v FROM employees WHERE employee_position IS NOT NULL AND employee_position <> '' ORDER BY employee_position ASC");
+        $deptFacet = $db->fetchAll("SELECT DISTINCT employee_post AS v FROM employees WHERE employee_post IS NOT NULL AND employee_post <> ''{$scopeSql} ORDER BY employee_post ASC", $scopeArg);
+        $posFacet  = $db->fetchAll("SELECT DISTINCT employee_position AS v FROM employees WHERE employee_position IS NOT NULL AND employee_position <> ''{$scopeSql} ORDER BY employee_position ASC", $scopeArg);
 
         $asPairs = fn(array $rows) => array_values(array_filter(array_map(
             fn($r) => ($v = (string)($r['v'] ?? '')) !== '' ? ['value' => $v, 'label' => $v] : null,

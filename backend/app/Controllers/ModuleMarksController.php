@@ -1150,6 +1150,17 @@ class ModuleMarksController extends BaseController
      */
     private function ensureCanReadStudent(Request $request, Response $response, string $reg): void
     {
+        // Dean / HOD / secretary / department-locked account: every student of their
+        // departments, whether or not the student has module registrations.
+        $scope = \App\Services\AcademicScopeService::forUser((array)($request->param('_auth_user') ?? []));
+        if ($scope !== null) {
+            $row = $reg === '' ? null : $this->db->fetchOne('SELECT department FROM student WHERE regnumber = ? LIMIT 1', [$reg]);
+            if (!$row || !\App\Services\AcademicScopeService::allowsDepartment($scope, $row['department'])) {
+                $this->error($response, 'Student not found.', 404);
+            }
+            return;
+        }
+
         $allowed = $this->teachableModuleIds($request);
         if ($allowed === null) {
             return; // MANAGE_MODULE_MARKS / superadmin — full scope

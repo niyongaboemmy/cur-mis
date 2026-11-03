@@ -2330,6 +2330,15 @@ class StudentController extends BaseController
             $where  = 'r.status = ?';
             $args[] = $status;
         }
+        // Dean / HOD / department-locked: only requests from students in their departments.
+        $cond = AcademicScopeService::departmentCondition(
+            AcademicScopeService::forUser((array)($request->param('_auth_user') ?? [])),
+            's.department'
+        );
+        if ($cond !== null) {
+            $where .= ' AND ' . $cond[0];
+            $args   = array_merge($args, $cond[1]);
+        }
 
         $rows = $this->studentModel->db()->fetchAll(
             "SELECT r.*, u.full_name AS reviewed_by_name,

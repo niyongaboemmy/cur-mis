@@ -10,6 +10,8 @@ import type { ScopeRequest } from '@/services/academicScopeService'
  * `needs_choice` — a Dean / HOD account that has not chosen a faculty or
  * department yet (or whose request was rejected).
  * `waiting` — a request is pending admin approval.
+ * `awaiting_assignment` — another department-locked role with no department
+ * assigned yet; an administrator assigns it in Users management.
  */
 export interface AcademicScope {
   scoped: boolean
@@ -18,6 +20,7 @@ export interface AcademicScope {
   department_ids: number[]
   needs_choice: boolean
   waiting: boolean
+  awaiting_assignment: boolean
   request: ScopeRequest | null
 }
 
@@ -28,6 +31,7 @@ const UNSCOPED: AcademicScope = {
   department_ids: [],
   needs_choice: false,
   waiting: false,
+  awaiting_assignment: false,
   request: null,
 }
 
@@ -40,10 +44,12 @@ export function useAcademicScope() {
     queryFn: () => api.get<any>('/academic-scope/me'),
     enabled: isAuthenticated,
     staleTime: 1000 * 60 * 5,
-    // While waiting for approval, check every 30 s so the account opens as soon as it is approved.
+    // While waiting for approval or a department assignment, check every 30 s so the
+    // account opens as soon as it is approved or assigned.
     refetchInterval: (q) => {
       const d: any = q.state.data
-      return (d?.data ?? d)?.waiting ? 30_000 : false
+      const s = d?.data ?? d
+      return s?.waiting || s?.awaiting_assignment ? 30_000 : false
     },
   })
 

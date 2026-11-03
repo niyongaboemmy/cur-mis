@@ -18,6 +18,7 @@ $router->group('/api/users', function ($router) {
     $router->get('/stats',         [UserController::class, 'stats']);
     // Literal segments must come before `/:id` so they win route matching.
     $router->get('/campuses-catalog', [UserController::class, 'campusesCatalog']);
+    $router->get('/departments-catalog', [UserController::class, 'departmentsCatalog']);
     $router->get('/bulk-preview',  [UserController::class, 'bulkPreview']);
     $router->post('/bulk-create',   [UserController::class, 'bulkCreate']);
     $router->get('/:id',   [UserController::class, 'show']);
@@ -30,4 +31,9 @@ $router->group('/api/users', function ($router) {
     $router->get('/:id/campuses',                [UserController::class, 'listCampuses']);
     $router->post('/:id/campuses/:campus_id',    [UserController::class, 'assignCampus']);
     $router->delete('/:id/campuses/:campus_id',  [UserController::class, 'revokeCampus']);
+
+    // Department scoping — the departments a department-locked role is limited to.
+    $router->get('/:id/departments',              [UserController::class, 'listDepartments']);
+    $router->post('/:id/departments/:dep_id',     [UserController::class, 'assignDepartment']);
+    $router->delete('/:id/departments/:dep_id',   [UserController::class, 'revokeDepartment']);
 }, [AuthMiddleware::class, new PermissionMiddleware(Permissions::MANAGE_USERS)]);

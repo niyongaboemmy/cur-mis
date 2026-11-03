@@ -12,6 +12,7 @@ class RoleModel extends BaseModel
         'name',
         'description',
         'enforce_campus_scope',
+        'enforce_department_scope',
     ];
 
     public function getIdByName(string $name): ?int

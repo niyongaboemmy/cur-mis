@@ -17,6 +17,12 @@ export interface User {
     code: string | null;
     location: string | null;
   }>;
+  /** Departments this user is limited to when their role has the department lock on. */
+  department_assignments?: Array<{
+    id: number;
+    name: string;
+    acronym: string | null;
+  }>;
   /** Current one-time passcode on the users table. Null when none is set. */
   otp_code?: string | null;
   otp_expires_at?: string | null;
@@ -41,6 +47,25 @@ export interface UserCampusAssignment {
   is_active: number;
   assigned_at: string;
   assigned_by: number | null;
+}
+
+export interface UserDepartmentAssignment {
+  assignment_id: number;
+  id: number;          // department id
+  name: string;
+  acronym: string | null;
+  fac_id: number | null;
+  fac_name: string | null;
+  assigned_at: string;
+  assigned_by: number | null;
+}
+
+export interface DepartmentCatalogItem {
+  id: number;
+  name: string;
+  acronym: string | null;
+  fac_id: number | null;
+  fac_name: string | null;
 }
 
 export interface UserStats {
@@ -141,6 +166,34 @@ const userService = {
   revokeCampus: async (userId: number, campusId: number) => {
     return api.delete<{ assignments: UserCampusAssignment[] }>(
       `/api/users/${userId}/campuses/${campusId}`,
+    );
+  },
+
+  listAllDepartments: async (signal?: AbortSignal) => {
+    return api.get<{ departments: DepartmentCatalogItem[] }>(
+      `/api/users/departments-catalog`,
+      {},
+      signal,
+    );
+  },
+
+  listDepartmentAssignments: async (userId: number, signal?: AbortSignal) => {
+    return api.get<{ assignments: UserDepartmentAssignment[] }>(
+      `/api/users/${userId}/departments`,
+      {},
+      signal,
+    );
+  },
+
+  assignDepartment: async (userId: number, depId: number) => {
+    return api.post<{ assignments: UserDepartmentAssignment[] }>(
+      `/api/users/${userId}/departments/${depId}`,
+    );
+  },
+
+  revokeDepartment: async (userId: number, depId: number) => {
+    return api.delete<{ assignments: UserDepartmentAssignment[] }>(
+      `/api/users/${userId}/departments/${depId}`,
     );
   },
 

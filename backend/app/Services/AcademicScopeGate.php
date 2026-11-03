@@ -25,6 +25,8 @@ final class AcademicScopeGate
         '/api/admin/academic-years', '/api/notifications', '/api/messages', '/api/announcements',
         '/api/forums', '/api/push', '/api/navigation',
         '/api/marks', '/api/attendance', '/api/grades', '/api/academic-analytics', '/api/module-requests',
+        // Grading scale page: read only (changes are refused below).
+        '/api/grading-scales',
         // Teacher area: already limited to the caller's own module assignments (LecturerScope).
         '/api/teacher',
     ];
@@ -39,6 +41,8 @@ final class AcademicScopeGate
     private const ENTITY_READ = [
         'faculties', 'departments', 'options', 'modules', 'levels', 'campuses', 'schools', 'degrees', 'intakes', 'facility',
         'exams',
+        // Teaching-staff directory (name, position) for the scheduling and exam lecturer pickers.
+        'instructors',
     ];
 
     /** Academic structure a scoped account may change (inside its scope, checked by the controller). */
@@ -73,6 +77,22 @@ final class AcademicScopeGate
             return null;
         }
 
+        // Scope administration, the academic calendar and staff categories are
+        // institution-wide: a scoped account may not change who is scoped, or
+        // settings that apply to every department.
+        if (self::under($p, ['/api/academic-scope/admin'])) {
+            return self::deny(403, 'Academic scope is managed by an administrator.');
+        }
+        if ($method !== 'GET' && self::under($p, ['/api/academic/years', '/api/academic/terms'])) {
+            return self::deny(403, 'Academic years and terms are set by the registry.');
+        }
+        if ($method !== 'GET' && $p === '/api/employees/staff-categories') {
+            return self::deny(403, 'Staff categories are set by an administrator.');
+        }
+        if ($method !== 'GET' && self::under($p, ['/api/grading-scales'])) {
+            return self::deny(403, 'The grading scale is set by the registry.');
+        }
+
         // Academic catalogues: read the reference lists, change only the academic structure.
         if (preg_match('#^/api/academics-management/([a-z_]+)#', $p, $mm)) {
             $entity = $mm[1];
@@ -82,8 +102,9 @@ final class AcademicScopeGate
             if ($method !== 'GET' && !in_array($entity, self::ENTITY_WRITE, true)) {
                 return self::deny(403, 'You cannot change this list.');
             }
-            // Academic secretaries manage programmes and modules; faculties and departments stay with the Dean / HOD.
-            if ($method !== 'GET' && ($scope['kind'] ?? '') === 'secretary' && in_array($entity, ['faculties', 'departments'], true)) {
+            // Academic secretaries and accounts with assigned departments manage programmes and
+            // modules; faculties and departments stay with the Dean / HOD.
+            if ($method !== 'GET' && in_array($scope['kind'] ?? '', ['secretary', 'assigned'], true) && in_array($entity, ['faculties', 'departments'], true)) {
                 return self::deny(403, 'Only the Dean or HOD can change faculties and departments.');
             }
         }
@@ -116,6 +137,16 @@ final class AcademicScopeGate
         }
 
         // Single records must belong to the scope.
+        if (preg_match('#^/api/students/profile-change-requests/(\d+)(?:/|$)#', $p, $mm)) {
+            $dep = self::one(
+                'SELECT s.department FROM student_profile_change_requests r JOIN student s ON s.id = r.student_id WHERE r.id = ?',
+                [(int)$mm[1]],
+                'department'
+            );
+            if ($dep === null || !AcademicScopeService::allowsDepartment($scope, $dep)) {
+                return self::deny(404, 'Change request not found.');
+            }
+        }
         if (preg_match('#^/api/students/(\d+)(?:/|$)#', $p, $mm)) {
             $dep = self::one('SELECT department FROM student WHERE id = ?', [(int)$mm[1]], 'department');
             if ($dep === null || !AcademicScopeService::allowsDepartment($scope, $dep)) {
@@ -132,6 +163,11 @@ final class AcademicScopeGate
             if (!self::moduleInScope($scope, (int)$mm[1])) {
                 return self::deny(404, 'Module not found');
             }
+            // An update may not move the module to a department outside the scope.
+            if ($method !== 'GET' && array_key_exists('department', $body)
+                && !AcademicScopeService::allowsDepartment($scope, $body['department'])) {
+                return self::deny(403, 'You can only move modules within your own faculty or department.');
+            }
         }
         if (preg_match('#^/api/modules/(schedules|assignments|registrations)/(\d+)$#', $p, $mm)) {
             $table = ['schedules' => ['module_schedules', 'ms'], 'assignments' => ['module_assignments', 'ma'], 'registrations' => ['module_registrations', 'mr']][$mm[1]];
@@ -147,7 +183,7 @@ final class AcademicScopeGate
                 return self::deny(403, 'You can only add modules to your own faculty or department.');
             }
         }
-        if ($method === 'POST' && preg_match('#^/api/modules/(schedules|assignments|registrations)$#', $p)) {
+        if ($method === 'POST' && preg_match('#^/api/modules/(schedules|assignments|registrations|registrations/bulk)$#', $p)) {
             if (!isset($body['module_id']) || !self::moduleInScope($scope, (int)$body['module_id'])) {
                 return self::deny(403, 'You can only manage records for modules in your own faculty or department.');
             }

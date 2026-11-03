@@ -2,6 +2,7 @@
 
 namespace App\Controllers;
 
+use App\Constants\Permissions;
 use App\Models\DB;
 use App\Services\AdmissionBillingService;
 use DateTime;
@@ -209,7 +210,7 @@ class BordereauxPaymentController
             return;
         }
 
-        if (!hasPermission("view_bordereau_{$role}_verification")) {
+        if (!hasPermission(Permissions::VIEW_FINANCE_APPROVALS)) {
             jsonResponse(['error' => 'Unauthorized'], 403);
             return;
         }
@@ -234,8 +235,11 @@ class BordereauxPaymentController
                     bs.created_at,
                     sa.first_name,
                     sa.last_name,
-                    sa.application_reference,
-                    sa.amount as required_amount,
+                    sa.application_number AS application_reference,
+                    COALESCE((
+                        SELECT SUM(ai.amount_due) FROM application_invoices ai
+                         WHERE ai.application_id = sa.id AND ai.status <> 'cancelled'
+                    ), 0) AS required_amount,
                     bvr.is_read
                  FROM bordereau_submissions bs
                  JOIN student_applications sa ON sa.id = bs.application_id
@@ -270,7 +274,7 @@ class BordereauxPaymentController
             return;
         }
 
-        if (!hasPermission('approve_bordereau_payment')) {
+        if (!hasPermission(Permissions::VIEW_FINANCE_APPROVALS)) {
             jsonResponse(['error' => 'Unauthorized'], 403);
             return;
         }
@@ -362,7 +366,7 @@ class BordereauxPaymentController
             return;
         }
 
-        if (!hasPermission('approve_bordereau_payment')) {
+        if (!hasPermission(Permissions::VIEW_FINANCE_APPROVALS)) {
             jsonResponse(['error' => 'Unauthorized'], 403);
             return;
         }
@@ -430,7 +434,7 @@ class BordereauxPaymentController
      */
     public function getDashboardStats()
     {
-        if (!hasPermission('view_bordereau_finance_verification')) {
+        if (!hasPermission(Permissions::VIEW_FINANCE_APPROVALS)) {
             jsonResponse(['error' => 'Unauthorized'], 403);
             return;
         }

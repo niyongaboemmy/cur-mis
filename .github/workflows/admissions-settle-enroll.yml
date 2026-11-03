@@ -1,0 +1,83 @@
+name: Admissions — settle deposits and issue registration numbers
+
+# Manual only. Calls the LIVE site (cur.ac.rw, the cPanel backend that real users
+# and UrubutoPay use) through the protected deploy endpoint
+# POST /api/deploy/settle-admissions, authenticated with the DEPLOY_KEY secret.
+#
+# Run it with mode "dry-run" first and read the output. "apply" writes: it books
+# approved bordereau deposits onto admission bills and enrolls every applicant whose
+# admission fees are fully paid. Pending bordereau deposits are never approved here.
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'dry-run lists what would change; apply writes to the live database'
+        type: choice
+        options: [dry-run, apply]
+        default: dry-run
+      application:
+        description: 'Optional application number, e.g. APP-2026-01351. Blank means every applicant.'
+        required: false
+        default: ''
+
+concurrency:
+  group: admissions-settle-enroll
+  cancel-in-progress: false
+
+jobs:
+  settle-and-enroll:
+    name: Settle deposits and enroll paid applicants
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      API_BASE: https://cur.ac.rw/umis
+      DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
+      MODE: ${{ inputs.mode }}
+      APPLICATION: ${{ inputs.application }}
+    steps:
+      - name: Run settlement on the live site
+        run: |
+          set -uo pipefail
+
+          if [ -z "$DEPLOY_KEY" ]; then
+            echo "The DEPLOY_KEY secret is not set in this repository. Add it under Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+
+          BODY=$(jq -n --arg mode "$MODE" --arg application "$APPLICATION" '{mode: $mode, application: $application}')
+
+          HTTP_CODE=$(curl -s --max-time 600 -o response.json -w "%{http_code}" \
+            -X POST \
+            -H "Authorization: Bearer $DEPLOY_KEY" \
+            -H "Content-Type: application/json" \
+            -d "$BODY" \
+            "$API_BASE/api/deploy/settle-admissions")
+
+          echo "HTTP $HTTP_CODE"
+          if ! jq -e . response.json >/dev/null 2>&1; then
+            echo "The server did not return JSON. Raw response:"
+            cat response.json || true
+            exit 1
+          fi
+
+          jq -r '
+            "Mode: \(.data.mode)   Application: \(.data.application)",
+            "",
+            "Step 1, approved deposits onto bills: \(.data.deposits | length) application(s)",
+            (.data.deposits[]? | "  \(.application)  \(.results // "would apply" | tostring)"),
+            "",
+            "Step 2, enrolled (or would be enrolled): \(.data.enrolled | length)",
+            (.data.enrolled[]? | "  \(.application)  \(.name)"),
+            "",
+            "Still owing fees: \(.data.owing | length)",
+            (.data.owing[]? | "  \(.application)  \(.name)  owes \(.balance) RWF  pending deposits: \(.pending_deposits) (\(.pending_amount) RWF)"),
+            "",
+            "Failed: \(.data.failed | length)",
+            (.data.failed[]? | "  \(.application)  [\(.step)] \(.error)")
+          ' response.json | tee "$GITHUB_STEP_SUMMARY"
+
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "The settlement reported failures (HTTP $HTTP_CODE). See the list above."
+            exit 1
+          fi

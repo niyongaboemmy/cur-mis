@@ -23,9 +23,15 @@ interface Props {
    * server-side to that person's own assignments.
    */
   allowWhenTeaching?: boolean
+  /**
+   * Admit every staff account (any role except student and applicant), without
+   * a permission check. Used by the teacher workspace; pages behind it are still
+   * scoped server-side to the signed-in person's own assignments.
+   */
+  allowStaff?: boolean
 }
 
-export default function ProtectedRoute({ requiredPermissions, requiredRoles, allowWhenTeaching }: Props) {
+export default function ProtectedRoute({ requiredPermissions, requiredRoles, allowWhenTeaching, allowStaff }: Props) {
   const { isAuthenticated, user } = useAuthStore((s) => ({
     isAuthenticated: s.isAuthenticated,
     user: s.user
@@ -48,6 +54,10 @@ export default function ProtectedRoute({ requiredPermissions, requiredRoles, all
     if (!roles.includes(user?.role ?? '')) {
       return <Navigate to="/" replace />
     }
+  }
+
+  if (allowStaff && ['student', 'applicant'].includes(user?.role ?? '')) {
+    return <Navigate to="/" replace />
   }
 
   if (requiredPermissions && !isSuperadmin(user)) {

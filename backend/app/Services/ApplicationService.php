@@ -435,9 +435,26 @@ class ApplicationService
         // nothing outstanding, so there is nothing to gate on.
         $billSummary = (new \App\Models\ApplicationInvoiceModel())->summaryFor($applicationId);
         if ($billSummary['count'] > 0 && !$billSummary['fully_paid']) {
+            // Say what is blocking the registration number, so staff know the next step.
+            $pending = $this->db->fetchOne(
+                "SELECT COUNT(*) AS cnt, COALESCE(SUM(amount), 0) AS total
+                   FROM `bordereau_submissions`
+                  WHERE application_id = ? AND status = 'pending'",
+                [$applicationId]
+            ) ?: [];
+            $owes = 'This applicant still owes ' . number_format($billSummary['balance'], 0) . ' RWF in admission fees.';
+
+            if ((int)($pending['cnt'] ?? 0) > 0) {
+                throw new \RuntimeException(
+                    $owes . ' A bank deposit of ' . number_format((float)$pending['total'], 0)
+                    . ' RWF is waiting for Finance to approve it on the Bordereau Verification page. '
+                    . 'Once it is approved, the registration number can be issued.'
+                );
+            }
+
             throw new \RuntimeException(
-                'This applicant still owes ' . number_format($billSummary['balance'], 0)
-                . ' RWF in admission fees. The registration number is issued automatically once they are paid in full.'
+                $owes . ' No deposit is waiting for approval. If the applicant has paid, Finance must record the payment '
+                . 'with Confirm offline. The registration number is issued automatically once they are paid in full.'
             );
         }
 

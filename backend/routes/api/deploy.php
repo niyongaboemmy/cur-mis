@@ -18,4 +18,5 @@ $router->group('/api/deploy', function (\Core\Router $r) {
     $r->post('/seed',        [DeployController::class, 'seed']);
     $r->get('/seeders',      [DeployController::class, 'seeders']);
     $r->post('/cache-clear', [DeployController::class, 'clearCache']);
+    $r->post('/settle-admissions', [DeployController::class, 'settleAdmissions']);
 }, [DeployKeyMiddleware::class]);

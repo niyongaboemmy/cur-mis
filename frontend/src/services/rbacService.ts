@@ -10,6 +10,8 @@ export interface Role {
   /** When 1, users with this role only ever see data belonging to the
    *  campuses they're assigned to — even if they have an "admin" role name. */
   enforce_campus_scope?: 0 | 1 | boolean;
+  /** When 1, users with this role only see data of their assigned department(s). */
+  enforce_department_scope?: 0 | 1 | boolean;
   /** When 1, this is one of the 8 canonical roles — cannot be renamed or deleted. */
   is_system?: 0 | 1 | boolean;
 }
@@ -35,11 +37,18 @@ export const rbacService = {
   createRole: (data: Partial<Role>) => api.post<{ id: number }>('/roles', data),
   updateRole: (id: number, data: Partial<Role>) => api.put<null>(`/api/roles/${id}`, data),
   deleteRole: (id: number) => api.delete<null>(`/api/roles/${id}`),
-  assignRolePermissions: (id: number, permissions: number[], opts: { enforce_campus_scope?: boolean } = {}) =>
+  assignRolePermissions: (
+    id: number,
+    permissions: number[],
+    opts: { enforce_campus_scope?: boolean; enforce_department_scope?: boolean } = {},
+  ) =>
     api.post<null>(`/api/roles/${id}/permissions`, {
       permissions,
       ...(opts.enforce_campus_scope !== undefined
         ? { enforce_campus_scope: opts.enforce_campus_scope ? 1 : 0 }
+        : {}),
+      ...(opts.enforce_department_scope !== undefined
+        ? { enforce_department_scope: opts.enforce_department_scope ? 1 : 0 }
         : {}),
     }),
 

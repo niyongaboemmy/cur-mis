@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Controllers;
 
+use App\Services\AdmissionSettlementService;
 use App\Services\MigrationService;
 use App\Services\SeederService;
 use Core\Request;
@@ -170,6 +171,29 @@ class DeployController
                 'opcache_enabled' => $opcacheEnabled,
                 'opcache_reset'   => $opcacheCleared,
             ],
+        ]);
+    }
+
+    /**
+     * POST /api/deploy/settle-admissions — apply approved bordereau deposits to the
+     * admission bills, then enroll admitted applicants whose fees are fully paid.
+     *
+     * Body: {"mode": "dry-run" | "apply", "application": "APP-2026-01351"} — both
+     * optional. Dry run is the default and writes nothing.
+     */
+    public function settleAdmissions(Request $request, Response $response): void
+    {
+        $body        = $request->body();
+        $apply       = ($body['mode'] ?? 'dry-run') === 'apply';
+        $application = trim((string)($body['application'] ?? ''));
+
+        $report = (new AdmissionSettlementService())->run($apply, $application);
+        $ok     = $report['failed'] === [];
+
+        $response->status($ok ? 200 : 500)->json([
+            'success' => $ok,
+            'message' => $ok ? 'Settlement finished.' : 'Settlement finished with failures.',
+            'data'    => $report,
         ]);
     }
 }

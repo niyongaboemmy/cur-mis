@@ -282,11 +282,6 @@ export default function StudentLedgerPage() {
             </div>
           )}
 
-          {/* Installment Breakdown */}
-          {yearId && invoices.length > 0 && (
-            <InstallmentBreakdown yearId={Number(yearId)} invoices={invoices} />
-          )}
-
           {/* Invoices */}
           <div className="card overflow-hidden">
             <div className="px-4 py-2.5 border-b border-ink-100 dark:border-ink-700 font-medium text-sm flex items-center gap-2 bg-ink-50/50 dark:bg-ink-700/20">

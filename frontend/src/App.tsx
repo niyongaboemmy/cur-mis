@@ -50,6 +50,12 @@ import PayrollRunDetailPage from "@/pages/hr/PayrollRunDetailPage";
 import PayrollSettingsPage from "@/pages/hr/PayrollSettingsPage";
 import EmployeePayrollProfilePage from "@/pages/hr/EmployeePayrollProfilePage";
 import PayrollPhpPage from "@/pages/hr/PayrollPhpPage";
+import PayrollDataQualityPage from "@/pages/hr/PayrollDataQualityPage";
+import PayrollRunsPage from "@/pages/hr/PayrollRunsPage";
+import PayrollRunDetailPage from "@/pages/hr/PayrollRunDetailPage";
+import PayrollSettingsPage from "@/pages/hr/PayrollSettingsPage";
+import EmployeePayrollProfilePage from "@/pages/hr/EmployeePayrollProfilePage";
+import PartTimePage from "@/pages/hr/PartTimePage";
 import LeavePhpPage from "@/pages/hr/LeavePhpPage";
 import MyPayslipsPhpPage from "@/pages/hr/MyPayslipsPhpPage";
 import PartTimePage from "@/pages/hr/PartTimePage";
@@ -445,6 +451,13 @@ function App() {
                 <Route path="/hr/part-time" element={<PartTimePage />} />
                 <Route path="/hr/payments" element={<PaymentsPage />} />
                 <Route path="/hr/payroll-system" element={<PayrollPhpPage />} />
+                <Route path="/hr/payroll-data-quality" element={<PayrollDataQualityPage />} />
+                <Route path="/hr/payroll-runs" element={<PayrollRunsPage />} />
+                <Route path="/hr/payroll-runs/:id" element={<PayrollRunDetailPage />} />
+                <Route path="/hr/payroll-settings" element={<PayrollSettingsPage />} />
+                <Route path="/hr/payroll-profile" element={<EmployeePayrollProfilePage />} />
+                <Route path="/hr/payroll-profile/:employeeId" element={<EmployeePayrollProfilePage />} />
+                <Route path="/hr/part-time" element={<PartTimePage />} />
               </Route>
 
               {/* ── Leave management — any HR viewer OR leave view/approve role ── */}
@@ -506,6 +519,10 @@ function App() {
 
               {/* ── Staff self-service: leave — same PHP leave app as HR → Leave ── */}
               <Route path="/me/leave" element={<LeavePhpPage />} />
+              <Route path="/me/leave-requests" element={<LeaveRequestsPhpPage />} />
+
+              {/* ── Staff self-service: payslips — same PHP payroll app for every staff account ── */}
+              <Route path="/me/payslips" element={<MyPayslipsPhpPage />} />
 
               {/* ── Staff self-service: payslips — same PHP payroll app for every staff account ── */}
               <Route path="/me/payslips" element={<MyPayslipsPhpPage />} />
@@ -517,10 +534,7 @@ function App() {
                   assignments (App\Helpers\LecturerScope). */}
               <Route
                 element={
-                  <ProtectedRoute
-                    requiredPermissions={PERMISSIONS.ACCESS_TEACHER_PORTAL}
-                    allowWhenTeaching
-                  />
+                  <ProtectedRoute allowStaff />
                 }
               >
                 <Route path="/teacher" element={<TeacherDashboardPage />} />

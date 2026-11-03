@@ -289,6 +289,7 @@ class AcademicsManagementController extends BaseController
         if (!$optionModel->find($optionId)) {
             $this->error($response, 'Program not found.', 404);
         }
+        $this->guardScope($request, $response, 'options', $optionId);
 
         $ids = $optionModel->getCampusIds($optionId);
         $campuses = [];
@@ -321,6 +322,7 @@ class AcademicsManagementController extends BaseController
         if (!$optionModel->find($optionId)) {
             $this->error($response, 'Program not found.', 404);
         }
+        $this->guardScope($request, $response, 'options', $optionId);
 
         $body = $request->body();
         $raw  = $body['campus_ids'] ?? [];
@@ -634,6 +636,12 @@ class AcademicsManagementController extends BaseController
 
         $optModel = $entity === 'options' ? $this->models['options'] : null;
 
+        // Dean / HOD / department-locked: every imported row, and every row it would
+        // update, must be in their faculty or department.
+        $scope = in_array($entity, ['faculties', 'departments', 'options', 'modules'], true)
+            ? AcademicScopeService::forUser((array)($request->param('_auth_user') ?? []))
+            : null;
+
         foreach ($rows as $idx => $row) {
             if (!is_array($row)) {
                 $failed[] = ['index' => $idx, 'error' => 'Row must be an object.'];
@@ -663,6 +671,14 @@ class AcademicsManagementController extends BaseController
             ) {
                 $key = strtolower(trim((string)$row[$matchKey]));
                 $existingRow = $existingByKey[$key] ?? null;
+            }
+
+            if ($scope !== null && (
+                !$this->rowInScope($scope, $entity, $row, $existingRow !== null)
+                || ($existingRow !== null && !$this->rowInScope($scope, $entity, $existingRow))
+            )) {
+                $failed[] = ['index' => $idx, 'error' => 'Outside your faculty or department.'];
+                continue;
             }
 
             try {
@@ -902,8 +918,14 @@ class AcademicsManagementController extends BaseController
 
         // Pre-load every lookup table once. Keys are case-insensitive trimmed
         // so file values match regardless of stray whitespace.
-        $optionByCode = [];
-        foreach ($optionModel->db()->fetchAll("SELECT id, code FROM `options` WHERE code IS NOT NULL AND code <> ''") as $r) {
+        // Dean / HOD / department-locked: only rows for programmes in their faculty or
+        // department, and only modules in scope are updated (shared modules are linked).
+        $scope = AcademicScopeService::forUser((array)($request->param('_auth_user') ?? []));
+
+        $optionByCode     = [];
+        $optionDepartment = [];
+        foreach ($optionModel->db()->fetchAll("SELECT id, code, department_id FROM `options` WHERE code IS NOT NULL AND code <> ''") as $r) {
+            $optionDepartment[(int)$r['id']] = $r['department_id'];
             $optionByCode[strtolower(trim((string)$r['code']))] = (int)$r['id'];
         }
         $campusByName = [];
@@ -950,6 +972,10 @@ class AcademicsManagementController extends BaseController
                 $failed[] = ['index' => $idx, 'error' => "Unknown option code '{$optionCode}'."];
                 continue;
             }
+            if ($scope !== null && !AcademicScopeService::allowsDepartment($scope, $optionDepartment[$optionId] ?? null)) {
+                $failed[] = ['index' => $idx, 'error' => "Programme '{$optionCode}' is outside your faculty or department."];
+                continue;
+            }
 
             $campusName = trim((string)($row['campus_name'] ?? ''));
             $campusId   = $campusName === '' ? null : ($campusByName[strtolower($campusName)] ?? null);
@@ -989,7 +1015,7 @@ class AcademicsManagementController extends BaseController
                         if ($levelId !== null && $levelId !== (int)($existing['level'] ?? 0)) {
                             $patch['level'] = $levelId;
                         }
-                        if (!empty($patch)) {
+                        if (!empty($patch) && ($scope === null || AcademicScopeService::allowsDepartment($scope, $existing['department'] ?? null))) {
                             $moduleModel->update((int)$existing['module_id'], $patch);
                             $modulesUpdated++;
                         }
@@ -1111,6 +1137,12 @@ class AcademicsManagementController extends BaseController
         if (!$option) {
             $this->error($response, 'Program not found.', 404);
         }
+        // Dean / HOD / department-locked: only a programme in their faculty or department,
+        // and only modules in scope are updated (shared modules are linked, not changed).
+        $scope = AcademicScopeService::forUser((array)($request->param('_auth_user') ?? []));
+        if ($scope !== null && !AcademicScopeService::allowsDepartment($scope, $option['department_id'] ?? null)) {
+            $this->error($response, 'You can only import modules into a programme in your own faculty or department.', 403);
+        }
         // Modules carry a `department` column that is NOT NULL — derive it
         // from the chosen program so the user doesn't have to repeat it in
         // every row. The frontend hides this column from the import form
@@ -1199,7 +1231,7 @@ class AcademicsManagementController extends BaseController
                         if ($levelId !== null && $levelId !== (int)($existing['level'] ?? 0)) {
                             $patch['level'] = $levelId;
                         }
-                        if (!empty($patch)) {
+                        if (!empty($patch) && ($scope === null || AcademicScopeService::allowsDepartment($scope, $existing['department'] ?? null))) {
                             $moduleModel->update((int)$existing['module_id'], $patch);
                             $modulesUpdated++;
                         }

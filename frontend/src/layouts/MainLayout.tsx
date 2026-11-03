@@ -139,7 +139,7 @@ const NAV_TREE: NavNode[] = [
   },
   {
     id: "student-profile",
-    label: "Profile",
+    label: "Overview Services & Status",
     icon: UserIcon,
     // Role-scoped: enrolled students see their profile wired to /api/students/me.
     // Each tab of the profile page is a direct entry so students land on it.
@@ -204,39 +204,33 @@ const NAV_TREE: NavNode[] = [
     permissions: [PERMISSIONS.ACCESS_APPLICANT_PORTAL],
   },
   {
-    // Teacher workspace. Gated on ACCESS_TEACHER_PORTAL rather than
-    // VIEW_MY_MODULES, because the `student` role holds VIEW_MY_MODULES too and
-    // would otherwise see a teaching menu. Every page is additionally scoped
-    // server-side to the lecturer's own module assignments.
+    // Teacher workspace, open to every staff account. Students and applicants
+    // are hidden, since they have their own portals. Every page is scoped
+    // server-side to the signed-in person's own module assignments.
     id: "my-teaching",
     label: "My Teaching",
     icon: Presentation,
-    permissions: [PERMISSIONS.ACCESS_TEACHER_PORTAL],
-    showWhenTeaching: true,
+    hideForRoles: ["student", "applicant"],
     children: [
       {
         to: "/teacher",
         label: "Dashboard",
-        permissions: [PERMISSIONS.ACCESS_TEACHER_PORTAL],
-        showWhenTeaching: true,
+        hideForRoles: ["student", "applicant"],
       },
       {
         to: "/teacher/courses",
         label: "My courses",
-        permissions: [PERMISSIONS.ACCESS_TEACHER_PORTAL],
-        showWhenTeaching: true,
+        hideForRoles: ["student", "applicant"],
       },
       {
         to: "/teacher/calendar",
         label: "My calendar",
-        permissions: [PERMISSIONS.ACCESS_TEACHER_PORTAL],
-        showWhenTeaching: true,
+        hideForRoles: ["student", "applicant"],
       },
       {
         to: "/teacher/exams",
         label: "My exams",
-        permissions: [PERMISSIONS.ACCESS_TEACHER_PORTAL],
-        showWhenTeaching: true,
+        hideForRoles: ["student", "applicant"],
       },
       {
         to: "/attendance",
@@ -257,12 +251,20 @@ const NAV_TREE: NavNode[] = [
     hideForRoles: ["student", "applicant"],
   },
   {
-    // Self-service leave — opens the same PHP leave app as HR → Leave, for every
-    // staff account. Hidden from students/applicants.
+    // Self-service leave for every staff account. Hidden from students/applicants.
     id: "my-leave",
     label: "My Leave",
     icon: CalendarDays,
     to: "/me/leave",
+    hideForRoles: ["student", "applicant"],
+  },
+  {
+    // Leave requests and approvals for every staff account. Hidden from
+    // students/applicants.
+    id: "leave-requests",
+    label: "All requests & Approval",
+    icon: CalendarDays,
+    to: "/me/leave-requests",
     hideForRoles: ["student", "applicant"],
   },
   {
@@ -416,6 +418,8 @@ const NAV_TREE: NavNode[] = [
     id: "modules",
     label: "Academics",
     icon: BookOpen,
+    // Students reach their modules through Overview Services & Status.
+    hideForRoles: ["student"],
     // Visibility follows the PERMISSIONS below, never the role name. Teaching
     // staff reach their own courses through "My Teaching"; when they are also
     // granted the management permissions here — as a HOD normally is — this
@@ -438,16 +442,6 @@ const NAV_TREE: NavNode[] = [
       PERMISSIONS.MANAGE_GRADUANDS,
     ],
     children: [
-      // Student self-service — opens the same Program & Marks view that
-      // lives under /me/profile so the curriculum, registration state and
-      // marks are presented identically across both entry points. Hidden
-      // from non-students; teachers get the assignment-driven view below.
-      {
-        to: "/me/profile?tab=curriculum",
-        label: "My modules",
-        roles: ["student"],
-        permissions: [PERMISSIONS.ACCESS_STUDENT_PORTAL],
-      },
       // Teacher / staff self-service — modules the user is assigned to
       // teach. Skipped for students since they have the curriculum view
       // above; admin/superadmin already see the full management children.
@@ -702,7 +696,17 @@ const NAV_TREE: NavNode[] = [
         permissions: [PERMISSIONS.VIEW_FINANCE_BILLING],
       },
       {
-        to: "/finance/structures",
+        to: "/finance/bordereau-verification",
+        label: "Bordereau Verification",
+        permissions: [PERMISSIONS.VIEW_FINANCE],
+      },
+      {
+        to: "/finance/fee-types",
+        label: "Fee Types",
+        permissions: [PERMISSIONS.MANAGE_FINANCE],
+      },
+      {
+        to: "/finance/fee-rates-system",
         label: "Fee Rates",
         permissions: [PERMISSIONS.VIEW_FINANCE_STRUCTURES],
       },
@@ -712,19 +716,9 @@ const NAV_TREE: NavNode[] = [
         permissions: [PERMISSIONS.VIEW_FINANCE_BURSARIES],
       },
       {
-        to: "/finance/reports",
-        label: "Reports",
-        permissions: [PERMISSIONS.VIEW_FINANCE_REPORTS],
-      },
-      {
         to: "/finance/fines",
         label: "Fines",
         permissions: [PERMISSIONS.VIEW_FINES, PERMISSIONS.MANAGE_FINES],
-      },
-      {
-        to: "/finance/overdue-alerts",
-        label: "Overdue Alerts",
-        permissions: [PERMISSIONS.SEND_FEE_ALERTS, PERMISSIONS.MANAGE_FINANCE],
       },
       {
         to: "/registrar/report",
@@ -750,17 +744,6 @@ const NAV_TREE: NavNode[] = [
       PERMISSIONS.RECORD_ATTENDANCE,
       PERMISSIONS.MANAGE_ATTENDANCE,
     ],
-  },
-  // Student self-service — opens the same attendance summary that lives
-  // under /me/profile, so the student sees only their own per-module
-  // attendance numbers without admin/teacher controls.
-  {
-    id: "student-finance",
-    label: "My Finance",
-    icon: CreditCard,
-    to: "/my-finance",
-    roles: ["student"],
-    permissions: [PERMISSIONS.ACCESS_STUDENT_PORTAL, PERMISSIONS.MY_INVOICE],
   },
   // Student self-service — submit/track service requests (transcripts,
   // enrollment letters, etc.) and pay/download once approved.
@@ -1109,6 +1092,10 @@ const ROUTE_TITLES: Record<string, { title: string; sub?: string }> = {
   "/me/leave": {
     title: "My Leave",
     sub: "Request leave and track your own requests",
+  },
+  "/me/leave-requests": {
+    title: "All requests & Approval",
+    sub: "Leave requests and approvals",
   },
   "/notifications": {
     title: "Notifications",
@@ -1570,7 +1557,7 @@ export default function MainLayout() {
 
   return (
     <div className="h-screen flex flex-col bg-[rgb(var(--bg-app))] text-ink-800 dark:text-ink-100 overflow-hidden">
-      {(academicScope.needs_choice || academicScope.waiting) && (
+      {(academicScope.needs_choice || academicScope.waiting || academicScope.awaiting_assignment) && (
         <ScopeGate scope={academicScope} onSubmitted={refreshScope} />
       )}
       {/* Blue banner */}

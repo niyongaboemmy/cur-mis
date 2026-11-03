@@ -22,18 +22,21 @@ class AcademicScopeController extends BaseController
         $scope    = AcademicScopeService::forUser($authUser);
         $latest   = $this->latestRequest((int)($authUser['id'] ?? 0));
 
-        // Scoped role with nothing approved yet: the account must choose, or wait.
+        // Scoped role with nothing approved yet: a Dean / HOD / secretary must choose, or wait;
+        // any other locked role waits for an administrator to assign its departments.
         $gated       = $scope !== null && $scope['level'] === 'none';
-        $needsChoice = $gated && (!$latest || $latest['status'] === 'rejected');
+        $requestFlow = AcademicScopeService::usesRequestFlow($authUser);
+        $needsChoice = $gated && $requestFlow && (!$latest || $latest['status'] === 'rejected');
 
         $this->success($response, [
-            'scoped'         => $scope !== null,
-            'level'          => $scope['level'] ?? null,
-            'faculty_ids'    => $scope['faculty_ids'] ?? [],
-            'department_ids' => $scope['department_ids'] ?? [],
-            'needs_choice'   => $needsChoice,
-            'waiting'        => $gated && !$needsChoice,
-            'request'        => $latest,
+            'scoped'              => $scope !== null,
+            'level'               => $scope['level'] ?? null,
+            'faculty_ids'         => $scope['faculty_ids'] ?? [],
+            'department_ids'      => $scope['department_ids'] ?? [],
+            'needs_choice'        => $needsChoice,
+            'waiting'             => $gated && $requestFlow && !$needsChoice,
+            'awaiting_assignment' => $gated && !$requestFlow,
+            'request'             => $latest,
         ]);
     }
 
@@ -57,8 +60,9 @@ class AcademicScopeController extends BaseController
         $authUser = (array) ($request->param('_auth_user') ?? []);
         $userId   = (int)($authUser['id'] ?? 0);
 
-        if (!AcademicScopeService::hasScopedRole($authUser)) {
-            $this->error($response, 'Only Dean or Head of Department accounts can request a scope.', 403);
+        // Approval makes the requester head of the unit (or its secretary), so only those roles may ask.
+        if (!AcademicScopeService::hasScopedRole($authUser) || !AcademicScopeService::usesRequestFlow($authUser)) {
+            $this->error($response, 'Only Dean, Head of Department or academic secretary accounts can request a scope.', 403);
         }
 
         $facId = $request->input('fac_id') ? (int)$request->input('fac_id') : null;

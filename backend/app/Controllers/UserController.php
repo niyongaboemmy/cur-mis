@@ -10,9 +10,12 @@ use App\Models\UserModel;
 use App\Models\RoleModel;
 use App\Models\CampusModel;
 use App\Models\UserCampusAssignmentModel;
+use App\Models\UserDepartmentAssignmentModel;
 use App\Helpers\ValidationHelper;
 use App\Helpers\FileServerClient;
 use App\Services\SystemLogService;
+use App\Services\AcademicScopeService;
+use Core\Database;
 
 class UserController extends BaseController
 {
@@ -20,13 +23,15 @@ class UserController extends BaseController
     private RoleModel $roleModel;
     private CampusModel $campusModel;
     private UserCampusAssignmentModel $campusAssignmentModel;
+    private UserDepartmentAssignmentModel $departmentAssignmentModel;
 
     public function __construct()
     {
-        $this->userModel              = new UserModel();
-        $this->roleModel              = new RoleModel();
-        $this->campusModel            = new CampusModel();
-        $this->campusAssignmentModel  = new UserCampusAssignmentModel();
+        $this->userModel                  = new UserModel();
+        $this->roleModel                  = new RoleModel();
+        $this->campusModel                = new CampusModel();
+        $this->campusAssignmentModel      = new UserCampusAssignmentModel();
+        $this->departmentAssignmentModel  = new UserDepartmentAssignmentModel();
     }
 
     /**
@@ -102,6 +107,31 @@ class UserController extends BaseController
             }
         }
 
+        // Same for (user_id → departments), shown as department chips in the Users list.
+        $departmentsByUser = [];
+        if (!empty($userIds)) {
+            try {
+                $ph = implode(',', array_fill(0, count($userIds), '?'));
+                $rows = $this->userModel->db()->fetchAll(
+                    "SELECT uda.user_id, d.dep_id, d.dep_name, d.dep_acronym
+                     FROM `user_department_assignments` uda
+                     JOIN `departements` d ON d.dep_id = uda.dep_id
+                     WHERE uda.user_id IN ($ph)
+                     ORDER BY d.dep_name ASC",
+                    $userIds
+                );
+                foreach ($rows as $r) {
+                    $departmentsByUser[(int)$r['user_id']][] = [
+                        'id'      => (int)$r['dep_id'],
+                        'name'    => $r['dep_name'],
+                        'acronym' => $r['dep_acronym'],
+                    ];
+                }
+            } catch (\Throwable) {
+                // Assignment table not migrated yet: no chips.
+            }
+        }
+
         // OTP columns live in UserModel::$hidden, so paginate() strips them.
         // Re-attach them here for the Users list OTP column. This route is
         // already gated behind the MANAGE_USERS permission.
@@ -122,8 +152,9 @@ class UserController extends BaseController
         $now = new \DateTimeImmutable('now');
 
         foreach ($paginated['data'] as &$user) {
-            $user['role_name']          = $roleMap[$user['role_id'] ?? 0] ?? 'guest';
-            $user['campus_assignments'] = $assignmentsByUser[(int)$user['id']] ?? [];
+            $user['role_name']              = $roleMap[$user['role_id'] ?? 0] ?? 'guest';
+            $user['campus_assignments']     = $assignmentsByUser[(int)$user['id']] ?? [];
+            $user['department_assignments'] = $departmentsByUser[(int)$user['id']] ?? [];
 
             $otp       = $otpByUser[(int)$user['id']] ?? null;
             $code      = $otp['otp_code'] ?? null;
@@ -215,6 +246,11 @@ class UserController extends BaseController
         }
 
         $user['campus_assignments'] = $this->campusAssignmentModel->listForUser($id);
+        try {
+            $user['department_assignments'] = $this->departmentAssignmentModel->listForUser($id);
+        } catch (\Throwable) {
+            $user['department_assignments'] = [];
+        }
         $this->success($response, $user, 'User details fetched.');
     }
 
@@ -390,10 +426,43 @@ class UserController extends BaseController
              $updateData['is_active'] = (int)$data['is_active'];
         }
 
+        $oldRole = $this->roleNameOf((int)($user['role_id'] ?? 0));
+        $newRole = $this->roleNameOf($updateData['role_id']);
+
         $this->userModel->update($id, $updateData);
         $actor = (array) $request->param('_auth_user');
         SystemLogService::log('UPDATE', 'USERS', "Updated user '{$user['email']}' (ID {$id}).", $id, 'user', null, $actor ?: null);
+
+        // Dean / HOD / secretary scope comes from an admin-approved link. Demoting the user
+        // removes it, so a later promotion cannot restore it without a new approval.
+        if (AcademicScopeService::hasScopedRole(['role' => $oldRole]) && !AcademicScopeService::hasScopedRole(['role' => $newRole])) {
+            $db = Database::getInstance();
+            $db->execute(
+                'UPDATE leave_org_units u
+                   JOIN leave_org_unit_academic_links l ON l.unit_id = u.id
+                    SET u.head_user_id = NULL
+                  WHERE u.head_user_id = ?',
+                [$id]
+            );
+            $db->execute(
+                'UPDATE leave_org_units u
+                   JOIN leave_org_unit_academic_links l ON l.unit_id = u.id
+                    SET u.acting_user_id = NULL, u.acting_until = NULL
+                  WHERE u.acting_user_id = ?',
+                [$id]
+            );
+            $db->execute('DELETE FROM academic_secretaries WHERE user_id = ?', [$id]);
+            SystemLogService::log('UPDATE', 'USERS', "Removed Dean/HOD scope from user '{$user['email']}' (ID {$id}) after role change from '{$oldRole}' to '{$newRole}'.", $id, 'user', null, $actor ?: null);
+        }
+
         $this->success($response, null, 'User updated successfully.');
+    }
+
+    /** Lower-cased role name for an id, or '' when the role does not exist. */
+    private function roleNameOf(int $roleId): string
+    {
+        $role = $roleId > 0 ? $this->roleModel->find($roleId) : null;
+        return strtolower(trim((string)($role['name'] ?? '')));
     }
 
     /**
@@ -931,5 +1000,116 @@ class UserController extends BaseController
         $this->success($response, [
             'assignments' => $this->campusAssignmentModel->listForUser($id),
         ], 'Campus revoked.');
+    }
+
+    /**
+     * GET /api/users/departments-catalog
+     * Every department with its faculty — used by the user-edit modal when
+     * assigning departments to a user.
+     */
+    public function departmentsCatalog(Request $request, Response $response): never
+    {
+        $rows = $this->userModel->db()->fetchAll(
+            "SELECT d.dep_id AS id, d.dep_name AS name, d.dep_acronym AS acronym,
+                    f.fac_id, f.fac_name
+             FROM `departements` d
+             LEFT JOIN `faculty` f ON f.fac_id = d.fac_id
+             ORDER BY f.fac_name ASC, d.dep_name ASC"
+        );
+        $this->success($response, ['departments' => $rows], 'Departments fetched.');
+    }
+
+    /**
+     * GET /api/users/:id/departments
+     * Department(s) currently assigned to this user.
+     */
+    public function listDepartments(Request $request, Response $response): never
+    {
+        $id = (int)$request->param('id');
+        if (!$this->userModel->find($id)) {
+            $this->error($response, 'User not found', 404);
+        }
+
+        $this->success($response, [
+            'assignments' => $this->departmentAssignmentModel->listForUser($id),
+        ], 'Department assignments fetched.');
+    }
+
+    /**
+     * POST /api/users/:id/departments/:dep_id
+     * Assign a department to a user. Takes effect when the user's role has
+     * "Show only data from assigned department(s)" on.
+     */
+    public function assignDepartment(Request $request, Response $response): never
+    {
+        $id       = (int)$request->param('id');
+        $depId    = (int)$request->param('dep_id');
+        $authUser = (array) $request->param('_auth_user');
+
+        $user = $this->userModel->find($id);
+        if (!$user) {
+            $this->error($response, 'User not found', 404);
+        }
+        $dep = $this->userModel->db()->fetchOne('SELECT dep_id, dep_name FROM `departements` WHERE dep_id = ?', [$depId]);
+        if (!$dep) {
+            $this->error($response, 'Department not found', 404);
+        }
+
+        if ($this->departmentAssignmentModel->pairExists($id, $depId)) {
+            $this->error($response, 'Department already assigned to this user.', 409);
+        }
+
+        $this->departmentAssignmentModel->create([
+            'user_id'     => $id,
+            'dep_id'      => $depId,
+            'assigned_by' => isset($authUser['id']) ? (int)$authUser['id'] : null,
+        ]);
+
+        SystemLogService::log(
+            'UPDATE', 'USERS',
+            "Assigned department '{$dep['dep_name']}' to user '{$user['email']}'.",
+            $id, 'user',
+            ['dep_id' => $depId, 'dep_name' => $dep['dep_name']],
+            $authUser ?: null
+        );
+
+        $this->success($response, [
+            'assignments' => $this->departmentAssignmentModel->listForUser($id),
+        ], 'Department assigned.', 201);
+    }
+
+    /**
+     * DELETE /api/users/:id/departments/:dep_id
+     * Remove a department from a user.
+     */
+    public function revokeDepartment(Request $request, Response $response): never
+    {
+        $id       = (int)$request->param('id');
+        $depId    = (int)$request->param('dep_id');
+        $authUser = (array) $request->param('_auth_user');
+
+        $user = $this->userModel->find($id);
+        if (!$user) {
+            $this->error($response, 'User not found', 404);
+        }
+
+        $removed = $this->departmentAssignmentModel->deletePair($id, $depId);
+        if ($removed === 0) {
+            $this->error($response, 'Department was not assigned to this user.', 404);
+        }
+
+        $dep = $this->userModel->db()->fetchOne('SELECT dep_name FROM `departements` WHERE dep_id = ?', [$depId]);
+        $depName = $dep['dep_name'] ?? "#{$depId}";
+        SystemLogService::log(
+            'UPDATE', 'USERS',
+            "Removed department '{$depName}' from user '{$user['email']}'.",
+            $id, 'user',
+            ['dep_id' => $depId, 'dep_name' => $depName],
+            $authUser ?: null
+        );
+
+        $this->success($response, [
+            'assignments' => $this->departmentAssignmentModel->listForUser($id),
+        ], 'Department removed.');
     }
 }

@@ -46,7 +46,7 @@ const TABS = [
     permissions: [PERMISSIONS.MANAGE_FINANCE],
   },
   {
-    to: "/finance/structures",
+    to: "/finance/fee-rates-system",
     label: "Fee Rates",
     icon: Settings2,
     end: false,
