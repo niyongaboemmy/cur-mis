@@ -247,8 +247,11 @@ class DocumentVerificationController extends BaseController
         $isInlineable = str_starts_with($mime, 'image/') || $mime === 'application/pdf';
         $disposition = $isInlineable ? 'inline' : 'attachment';
 
+        // The name the applicant uploaded, as recorded here; the file server may only know its own copy's name.
+        $filename = trim((string)($document['file_original_name'] ?? '')) ?: $fileData['original_name'];
+
         header('Content-Type: ' . $mime);
-        header('Content-Disposition: ' . $disposition . '; filename="' . addslashes($fileData['original_name']) . '"');
+        header('Content-Disposition: ' . $disposition . '; filename="' . addslashes($filename) . '"');
         header('Content-Length: ' . strlen($fileData['content']));
         header('Cache-Control: private, no-store');
         header('X-Content-Type-Options: nosniff');
