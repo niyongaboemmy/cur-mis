@@ -725,11 +725,6 @@ const NAV_TREE: NavNode[] = [
         permissions: [PERMISSIONS.VIEW_FINANCE_BILLING],
       },
       {
-        to: "/finance/bordereau-verification",
-        label: "Bordereau Verification",
-        permissions: [PERMISSIONS.VIEW_FINANCE],
-      },
-      {
         to: "/finance/fee-types",
         label: "Fee Types",
         permissions: [PERMISSIONS.MANAGE_FINANCE],
