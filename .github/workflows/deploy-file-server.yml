@@ -1,18 +1,21 @@
 name: Deploy — File Server (CDN)
 
-# Method: cPanel UAPI (port 2083) upload + one-time PHP helpers for extraction.
-# composer install runs on the GitHub Actions runner; vendor/ is zipped and uploaded.
+# Method: cPanel UAPI (port 2083) upload + cPanel API2 Fileman::fileop extract —
+# the same as deploy-backend.yml. No PHP file is uploaded: the server's security
+# layer blocks .php uploads through the cPanel API, which is why the old
+# extractor-helper method stopped deploying. composer install runs on the GitHub
+# Actions runner; vendor/ is zipped and uploaded.
 #
-# Extraction — stage-then-swap:
-#   Each zip is extracted to a temp dir, then files are rename()d into place.
-#   rename() is atomic on the same filesystem — near-zero window of mixed files.
+# Extraction merges into the target directory: files in the zip replace their
+# old copies, everything else (storage/uploads/*, which the zip excludes) stays.
 #
 # Server layout after deploy:
 #   /home/curac/file-server/          — PHP source + vendor/ (outside public_html)
 #   /home/curac/public_html/umis/cdn/ — only file-server/public/ (web entry point)
 #
 # Required GitHub Secrets:
-#   CPANEL_PASS       — cPanel account password
+#   CPANEL_API_TOKEN  — cPanel API token (same one deploy-backend.yml uses)
+#   DEPLOY_KEY        — backend deploy key, used to clear OPcache after the extract
 #   FILE_SERVER_KEY   — the shared upload key; MUST equal FILE_SERVER_KEY in the
 #                       live backend's .env, else every upload returns 401
 #   FILE_SERVER_ENV   — legacy: full .env contents (key read from it only if
@@ -34,10 +37,7 @@ env:
   # cPanel host (UAPI on :2083).
   CPANEL_URL: https://cpanel.cur.ac.rw:2083
   CPANEL_USER: curac
-
-  EXTRACTOR_INPLACE_B64: PD9waHAKaWYgKCgkX0dFVFsndG9rZW4nXSA/PyAnJykgIT09ICdERVBMT1lfVE9LRU4nKSB7IGh0dHBfcmVzcG9uc2VfY29kZSg0MDMpOyBkaWUoJ2ZvcmJpZGRlbicpOyB9CiR6aXAgPSBfX0RJUl9fIC4gJy9ERVBMT1lfWklQX05BTUUnOwokc3RhZ2luZyA9IF9fRElSX18gLiAnL19kc18nIC4gdGltZSgpOwokeiA9IG5ldyBaaXBBcmNoaXZlOwppZiAoJHotPm9wZW4oJHppcCkgIT09IFRSVUUpIHsgaHR0cF9yZXNwb25zZV9jb2RlKDUwMCk7IGVjaG8gJ2ZhaWxlZDogJy4kei0+Z2V0U3RhdHVzU3RyaW5nKCk7IGV4aXQ7IH0KaWYgKCFta2Rpcigkc3RhZ2luZywgMDc1NSwgdHJ1ZSkpIHsgaHR0cF9yZXNwb25zZV9jb2RlKDUwMCk7IGVjaG8gJ2ZhaWxlZDogc3RhZ2luZyc7IGV4aXQ7IH0KJHotPmV4dHJhY3RUbygkc3RhZ2luZyk7ICR6LT5jbG9zZSgpOyB1bmxpbmsoJHppcCk7CiRpdCA9IG5ldyBSZWN1cnNpdmVJdGVyYXRvckl0ZXJhdG9yKG5ldyBSZWN1cnNpdmVEaXJlY3RvcnlJdGVyYXRvcigkc3RhZ2luZywgUmVjdXJzaXZlRGlyZWN0b3J5SXRlcmF0b3I6OlNLSVBfRE9UUyksIFJlY3Vyc2l2ZUl0ZXJhdG9ySXRlcmF0b3I6OlNFTEZfRklSU1QpOwpmb3JlYWNoICgkaXQgYXMgJGYpIHsgJHJlbCA9IHN1YnN0cigkZi0+Z2V0UGF0aG5hbWUoKSwgc3RybGVuKCRzdGFnaW5nKSsxKTsgJGQgPSBfX0RJUl9fLicvJy4kcmVsOyBpZiAoJGYtPmlzRGlyKCkpIHsgaWYgKCFpc19kaXIoJGQpKSBta2RpcigkZCwwNzU1LHRydWUpOyB9IGVsc2UgeyAkZGQgPSBkaXJuYW1lKCRkKTsgaWYgKCFpc19kaXIoJGRkKSkgbWtkaXIoJGRkLDA3NTUsdHJ1ZSk7IHJlbmFtZSgkZi0+Z2V0UGF0aG5hbWUoKSwkZCk7IH0gfQokY2wgPSBuZXcgUmVjdXJzaXZlSXRlcmF0b3JJdGVyYXRvcihuZXcgUmVjdXJzaXZlRGlyZWN0b3J5SXRlcmF0b3IoJHN0YWdpbmcsIFJlY3Vyc2l2ZURpcmVjdG9yeUl0ZXJhdG9yOjpTS0lQX0RPVFMpLCBSZWN1cnNpdmVJdGVyYXRvckl0ZXJhdG9yOjpDSElMRF9GSVJTVCk7CmZvcmVhY2ggKCRjbCBhcyAkZikgeyAkZi0+aXNEaXIoKSA/IHJtZGlyKCRmLT5nZXRQYXRobmFtZSgpKSA6IHVubGluaygkZi0+Z2V0UGF0aG5hbWUoKSk7IH0KQHJtZGlyKCRzdGFnaW5nKTsKaWYgKGZ1bmN0aW9uX2V4aXN0cygnb3BjYWNoZV9yZXNldCcpKSBvcGNhY2hlX3Jlc2V0KCk7CnVubGluayhfX0ZJTEVfXyk7IGVjaG8gJ29rJzsK
-
-  EXTRACTOR_HOME_B64: PD9waHAKaWYgKCgkX0dFVFsndG9rZW4nXSA/PyAnJykgIT09ICdERVBMT1lfVE9LRU4nKSB7IGh0dHBfcmVzcG9uc2VfY29kZSg0MDMpOyBkaWUoJ2ZvcmJpZGRlbicpOyB9CiRob21lID0gcmVhbHBhdGgoX19ESVJfXyAuICcvREVQTE9ZX09GRlNFVCcpOwokemlwID0gJGhvbWUgLiAnL0RFUExPWV9aSVBfTkFNRSc7CiRkZXN0ID0gJGhvbWUgLiAnL0RFUExPWV9ERVNUX0RJUic7CiRzdGFnaW5nID0gJGhvbWUgLiAnL19kc18nIC4gdGltZSgpOwokeiA9IG5ldyBaaXBBcmNoaXZlOwppZiAoJHotPm9wZW4oJHppcCkgIT09IFRSVUUpIHsgaHR0cF9yZXNwb25zZV9jb2RlKDUwMCk7IGVjaG8gJ2ZhaWxlZDogJy4kei0+Z2V0U3RhdHVzU3RyaW5nKCk7IGV4aXQ7IH0KaWYgKCFpc19kaXIoJGRlc3QpKSBta2RpcigkZGVzdCwgMDc1NSwgdHJ1ZSk7CmlmICghbWtkaXIoJHN0YWdpbmcsIDA3NTUsIHRydWUpKSB7IGh0dHBfcmVzcG9uc2VfY29kZSg1MDApOyBlY2hvICdmYWlsZWQ6IHN0YWdpbmcnOyBleGl0OyB9CiR6LT5leHRyYWN0VG8oJHN0YWdpbmcpOyAkei0+Y2xvc2UoKTsgdW5saW5rKCR6aXApOwokaXQgPSBuZXcgUmVjdXJzaXZlSXRlcmF0b3JJdGVyYXRvcihuZXcgUmVjdXJzaXZlRGlyZWN0b3J5SXRlcmF0b3IoJHN0YWdpbmcsIFJlY3Vyc2l2ZURpcmVjdG9yeUl0ZXJhdG9yOjpTS0lQX0RPVFMpLCBSZWN1cnNpdmVJdGVyYXRvckl0ZXJhdG9yOjpTRUxGX0ZJUlNUKTsKZm9yZWFjaCAoJGl0IGFzICRmKSB7ICRyZWwgPSBzdWJzdHIoJGYtPmdldFBhdGhuYW1lKCksIHN0cmxlbigkc3RhZ2luZykrMSk7ICRkID0gJGRlc3QuJy8nLiRyZWw7IGlmICgkZi0+aXNEaXIoKSkgeyBpZiAoIWlzX2RpcigkZCkpIG1rZGlyKCRkLDA3NTUsdHJ1ZSk7IH0gZWxzZSB7ICRkZCA9IGRpcm5hbWUoJGQpOyBpZiAoIWlzX2RpcigkZGQpKSBta2RpcigkZGQsMDc1NSx0cnVlKTsgcmVuYW1lKCRmLT5nZXRQYXRobmFtZSgpLCRkKTsgfSB9CiRjbCA9IG5ldyBSZWN1cnNpdmVJdGVyYXRvckl0ZXJhdG9yKG5ldyBSZWN1cnNpdmVEaXJlY3RvcnlJdGVyYXRvcigkc3RhZ2luZywgUmVjdXJzaXZlRGlyZWN0b3J5SXRlcmF0b3I6OlNLSVBfRE9UUyksIFJlY3Vyc2l2ZUl0ZXJhdG9ySXRlcmF0b3I6OkNISUxEX0ZJUlNUKTsKZm9yZWFjaCAoJGNsIGFzICRmKSB7ICRmLT5pc0RpcigpID8gcm1kaXIoJGYtPmdldFBhdGhuYW1lKCkpIDogdW5saW5rKCRmLT5nZXRQYXRobmFtZSgpKTsgfQpAcm1kaXIoJHN0YWdpbmcpOwp1bmxpbmsoX19GSUxFX18pOyBlY2hvICdvayc7Cg==
+  API_BASE: https://cur.ac.rw/umis/api
 
 jobs:
   deploy:
@@ -129,85 +129,83 @@ jobs:
       # network until the firewall allowlists GitHub's runner IP ranges.
       - name: Preflight — is cPanel reachable from this runner?
         id: preflight
+        # The block is intermittent, not absolute: a single probe declared the
+        # server unreachable on a run whose backend deploy (same push, retrying
+        # probe) got through. Probe up to 6 times over ~2 minutes, as
+        # deploy-backend.yml does, and only give up if every attempt fails.
         run: |
-          if curl -sk --connect-timeout 15 --max-time 25 -o /dev/null "$CPANEL_URL/login"; then
-            echo "reachable=true" >> "$GITHUB_OUTPUT"
-            echo "cPanel reachable — deploying."
-          else
-            echo "reachable=false" >> "$GITHUB_OUTPUT"
-            echo "::warning title=Deploy skipped — cPanel unreachable::$CPANEL_URL refuses connections from GitHub-hosted runners (server firewall). The build passed; deploy from an allowed network."
+          reach=false
+          for i in 1 2 3 4 5 6; do
+            if curl -sk --connect-timeout 20 --max-time 30 -o /dev/null "$CPANEL_URL/login"; then
+              reach=true; echo "cPanel reachable on attempt $i — deploying."; break
+            fi
+            echo "attempt $i: no answer from $CPANEL_URL"
+            [ $i -lt 6 ] && sleep 20
+          done
+          echo "reachable=$reach" >> "$GITHUB_OUTPUT"
+          if [ "$reach" != "true" ]; then
+            echo "::warning title=Deploy skipped — cPanel unreachable::$CPANEL_URL did not answer in 6 attempts over 2 minutes (server firewall). The build passed; re-run this workflow."
           fi
 
-      # ── Step 1: Deploy source to ~/file-server/ ───────────────────────────────
-      # Zip goes to home root (outside public_html — keeps source off the web).
-      # Extractor in cdn/ calculates home via __DIR__/../../..
-      - name: Upload & extract file-server source → ~/file-server/
+      # ── Upload & extract ──────────────────────────────────────────────────────
+      # Same helpers as deploy-backend.yml: token-authenticated upload, then the
+      # server extracts the zip itself (no PHP helper). Retries ride out the
+      # server's intermittent connection drops.
+      - name: Upload & extract file-server source → ~/file-server/ and public/ → public_html/umis/cdn/
         if: steps.preflight.outputs.reachable == 'true'
+        timeout-minutes: 5
         env:
-          CPANEL_PASS: ${{ secrets.CPANEL_PASS }}
+          CPANEL_API_TOKEN: ${{ secrets.CPANEL_API_TOKEN }}
         run: |
-          TOKEN=$(openssl rand -hex 16)
+          up() {
+            local f="$1" d="$2" r s i
+            for i in 1 2 3; do
+              r=$(curl -s -k --connect-timeout 20 --max-time 300 -H "Authorization: cpanel $CPANEL_USER:$CPANEL_API_TOKEN" \
+                -F "dir=$d" -F "overwrite=1" -F "file-1=@$f" \
+                "$CPANEL_URL/execute/Fileman/upload_files" || true)
+              s=$(printf '%s' "$r" | jq -r '.status // 0' 2>/dev/null || echo 0)
+              [ "$s" = "1" ] && { echo "upload $(basename "$f") -> $d: ok"; return 0; }
+              echo "upload $(basename "$f") -> $d attempt $i failed: ${r:0:300}"
+              sleep 5
+            done
+            return 1
+          }
+          ex() {
+            local z="$1" d="$2" r i
+            for i in 1 2 3; do
+              r=$(curl -s -k --connect-timeout 20 --max-time 300 -H "Authorization: cpanel $CPANEL_USER:$CPANEL_API_TOKEN" \
+                "$CPANEL_URL/json-api/cpanel?cpanel_jsonapi_apiversion=2&cpanel_jsonapi_module=Fileman&cpanel_jsonapi_func=fileop&op=extract&sourcefiles=$z&destfiles=$d&doubledecode=0" || true)
+              if printf '%s' "$r" | jq -e '(.cpanelresult.error // "") == "" and .cpanelresult.data' >/dev/null 2>&1; then
+                echo "extract $z -> $d: ok"; return 0
+              fi
+              echo "extract $z -> $d attempt $i failed: ${r:0:300}"
+              sleep 5
+            done
+            return 1
+          }
 
-          echo "$EXTRACTOR_HOME_B64" | base64 -d \
-            | sed -e "s/DEPLOY_TOKEN/$TOKEN/" \
-                  -e "s|DEPLOY_OFFSET|/../../..|" \
-                  -e "s/DEPLOY_ZIP_NAME/fileserver-src.zip/" \
-                  -e "s/DEPLOY_DEST_DIR/file-server/" \
-            > _extract_src.php
+          # Source zip carries .env (the upload key), so it stays in the home root, off the web.
+          up fileserver-src.zip /
+          ex /fileserver-src.zip /file-server
 
-          # Upload zip to home root (not in public_html)
-          R=$(curl -s -k -u "$CPANEL_USER:$CPANEL_PASS" \
-            -F "dir=/" \
-            -F "overwrite=1" \
-            -F "file-1=@fileserver-src.zip;type=application/zip" \
-            "$CPANEL_URL/execute/Fileman/upload_files")
-          echo "Upload zip: $R"
-          [ "$(echo "$R" | jq -r '.status // 0')" = "1" ] || { echo "Zip upload failed"; exit 1; }
+          up fileserver-public.zip /public_html/umis/cdn
+          ex /public_html/umis/cdn/fileserver-public.zip /public_html/umis/cdn
 
-          # Upload extractor to cdn/ (web-accessible)
-          R=$(curl -s -k -u "$CPANEL_USER:$CPANEL_PASS" \
-            -F "dir=/public_html/umis/cdn" \
-            -F "overwrite=1" \
-            -F "file-1=@_extract_src.php;type=text/plain" \
-            "$CPANEL_URL/execute/Fileman/upload_files")
-          echo "Upload extractor: $R"
-          [ "$(echo "$R" | jq -r '.status // 0')" = "1" ] || { echo "Extractor upload failed"; exit 1; }
-
-          RESULT=$(curl -s -k "https://cur.ac.rw/umis/cdn/_extract_src.php?token=$TOKEN")
-          echo "Extract result: $RESULT"
-          [ "$RESULT" = "ok" ] || { echo "Extraction failed: $RESULT"; exit 1; }
-
-      # ── Step 2: Deploy public/ to ~/public_html/umis/cdn/ ────────────────────
-      - name: Upload & extract file-server/public/ → public_html/umis/cdn/
+      - name: Clear OPcache
         if: steps.preflight.outputs.reachable == 'true'
+        timeout-minutes: 1
         env:
-          CPANEL_PASS: ${{ secrets.CPANEL_PASS }}
+          DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
         run: |
-          TOKEN=$(openssl rand -hex 16)
-
-          echo "$EXTRACTOR_INPLACE_B64" | base64 -d \
-            | sed -e "s/DEPLOY_TOKEN/$TOKEN/" -e "s/DEPLOY_ZIP_NAME/fileserver-public.zip/" \
-            > _extract_pub.php
-
-          R=$(curl -s -k -u "$CPANEL_USER:$CPANEL_PASS" \
-            -F "dir=/public_html/umis/cdn" \
-            -F "overwrite=1" \
-            -F "file-1=@fileserver-public.zip;type=application/zip" \
-            "$CPANEL_URL/execute/Fileman/upload_files")
-          echo "Upload zip: $R"
-          [ "$(echo "$R" | jq -r '.status // 0')" = "1" ] || { echo "Zip upload failed"; exit 1; }
-
-          R=$(curl -s -k -u "$CPANEL_USER:$CPANEL_PASS" \
-            -F "dir=/public_html/umis/cdn" \
-            -F "overwrite=1" \
-            -F "file-1=@_extract_pub.php;type=text/plain" \
-            "$CPANEL_URL/execute/Fileman/upload_files")
-          echo "Upload extractor: $R"
-          [ "$(echo "$R" | jq -r '.status // 0')" = "1" ] || { echo "Extractor upload failed"; exit 1; }
-
-          RESULT=$(curl -s -k "https://cur.ac.rw/umis/cdn/_extract_pub.php?token=$TOKEN")
-          echo "Extract result: $RESULT"
-          [ "$RESULT" = "ok" ] || { echo "Extraction failed: $RESULT"; exit 1; }
+          # Same account and PHP pool as the backend: its cache-clear resets the
+          # cached copy of the file server's code too. Repeated because each
+          # PHP-FPM worker keeps its own OPcache.
+          for i in $(seq 1 12); do
+            RESULT=$(curl -s -k --max-time 15 -X POST \
+              -H "Authorization: Bearer $DEPLOY_KEY" \
+              "$API_BASE/api/deploy/cache-clear" || true)
+            echo "Cache clear #$i: $RESULT"
+          done
 
       # ── Verify ───────────────────────────────────────────────────────────────
       # Proves ~/file-server/.env actually landed and the key is live. Posting no
