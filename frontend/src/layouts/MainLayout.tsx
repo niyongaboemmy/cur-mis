@@ -1363,6 +1363,9 @@ function findActiveEntry(
 
 export default function MainLayout() {
   const location = useLocation();
+  // Loaded inside another page's iframe (e.g. Finance > Billing): the outer
+  // shell already shows the navigation, so this copy hides its own sidebar.
+  const framed = typeof window !== "undefined" && window.self !== window.top;
   // Fetch /auth/me once on mount — keeps the Zustand user (role, permissions)
   // in sync with the server. The hook syncs the response back via setUser.
   useCurrentUser();
@@ -1627,7 +1630,7 @@ export default function MainLayout() {
         className={`fixed lg:sticky top-0 left-0 z-50 h-screen shrink-0 bg-white dark:bg-ink-800 border-r border-ink-100 dark:border-ink-700
           transition-[width,transform] duration-300 ease-out
           ${sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}
-          flex flex-col`}
+          flex flex-col ${framed ? "hidden" : ""}`}
       >
         {/* Logo header */}
         <div
