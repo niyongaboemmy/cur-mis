@@ -19,6 +19,7 @@ import {
   Columns3,
   Download,
   Upload,
+  UserPlus,
   FileText,
   Trash2,
 } from "lucide-react";
@@ -43,6 +44,7 @@ import { displayDistrict } from "@/data/rwandaLocations";
 import { usePermission } from "@/utils/permissions";
 import { PERMISSIONS } from "@/constants/permissions";
 import BulkUploadModal from "@/components/admin/BulkUploadModal";
+import AddStudentModal from "@/components/students/AddStudentModal";
 import DocumentCompletionBadge, {
   type DocumentStatus,
 } from "@/components/admin/DocumentCompletionBadge";
@@ -616,6 +618,9 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
   // Admin, Registrar, and Super Admin can delete students
   const canDeleteStudents = !!(user?.role_name && ['Admin', 'registrar', 'superadmin'].includes(user.role_name));
 
+  // Adding students is limited to Admin, registrar and superadmin (same group as delete).
+  const canAddStudent = canDeleteStudents;
+
   // Inline district edit saves through POST /students/:id, which needs MANAGE_STUDENTS.
   const canEditDistrict = usePermission(PERMISSIONS.MANAGE_STUDENTS);
 
@@ -896,6 +901,7 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
   const [bulkCampusId, setBulkCampusId] = useState<string>("");
   const [exportOpen, setExportOpen] = useState(false);
   const [bulkUploadOpen, setBulkUploadOpen] = useState(false);
+  const [addStudentOpen, setAddStudentOpen] = useState(false);
 
   const handleBulkUpdate = async () => {
     if (!bulkCampusId || selectedIds.size === 0) return;
@@ -1013,6 +1019,16 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
             {activeFilterCount > 0 && (
               <button onClick={clearAll} className="btn-secondary btn-sm">
                 <X className="w-3 h-3" /> Clear filters
+              </button>
+            )}
+            {canAddStudent && (
+              <button
+                type="button"
+                onClick={() => setAddStudentOpen(true)}
+                className="btn-primary btn-sm flex items-center gap-1.5"
+                title="Add a student who already has a registration number"
+              >
+                <UserPlus className="w-3.5 h-3.5" /> Add Student who already have a registration number
               </button>
             )}
             <button
@@ -1455,6 +1471,17 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
             return rest as Record<string, string | number | undefined>;
           })()
         }
+      />
+
+      <AddStudentModal
+        open={addStudentOpen && canAddStudent}
+        onClose={() => {
+          setAddStudentOpen(false);
+          // The form saves on the legacy site, so refresh the list and counts when it closes.
+          qc.invalidateQueries({ queryKey: ["students"] });
+          qc.invalidateQueries({ queryKey: ["student-stats"] });
+          qc.invalidateQueries({ queryKey: ["student-stats-all-years"] });
+        }}
       />
 
       <BulkUploadModal
