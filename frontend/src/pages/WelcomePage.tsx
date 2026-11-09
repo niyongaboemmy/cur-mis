@@ -81,6 +81,22 @@ interface QA {
   hideForRoles?: string[];
 }
 
+/**
+ * Shortcuts hidden from the Home dashboard for ALL users. Matched by label.
+ * Remove a label from this list to show that card again.
+ */
+const HIDDEN_QUICK_SHORTCUTS = new Set<string>([
+  "Dashboard",
+  "Admissions",
+  "Users",
+  "Roles",
+  "Academics",
+  "Modules",
+  "Academic settings",
+  "HR",
+  "Finance",
+]);
+
 const QUICK_ACTIONS: QA[] = [
   // Universal — every signed-in user (except student/applicant who land on
   // their portal-specific shortcuts).
@@ -331,6 +347,7 @@ export default function WelcomePage() {
 
   const actions = useMemo(() => {
     return QUICK_ACTIONS.filter((qa) => {
+      if (HIDDEN_QUICK_SHORTCUTS.has(qa.label)) return false;
       if (qa.hideForRoles?.includes(role)) return false;
       if (qa.roles && qa.roles.length > 0) return qa.roles.includes(role);
       if (!qa.permissions || qa.permissions.length === 0) return true;
