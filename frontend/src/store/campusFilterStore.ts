@@ -2,14 +2,15 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
 /**
- * Globally-selected campus scope. When non-null, every campus-aware
- * service (admissions list, students list, statistics, etc.) merges this
- * id into the request as `campus_id` / `campus` so the whole UI shows
- * data scoped to just that campus.
+ * Globally-selected campus scope. When `selectedCampusId` is non-null, every
+ * campus-aware service (admissions list, students list, statistics, etc.)
+ * merges this id into the request so the whole UI shows that one campus.
  *
- * Set to null = "All my assigned campuses" (the backend's auto-scoping
- * for Task 1.1 then governs — registry users still only see their own
- * campuses; admins see everything).
+ * `isCombined` is the "All my campuses" view for scope-locked users with
+ * several campuses. It is a separate flag, not a null id, so a null id keeps
+ * its existing meaning and can never silently widen a locked user's scope.
+ * While combined, the Students overview adds up the per-campus numbers in
+ * the frontend; other pages keep using the first assigned campus.
  *
  * Persisted in localStorage so a refresh keeps the user's chosen scope.
  */
@@ -25,15 +26,20 @@ interface AuthUserLite {
 
 interface CampusFilterState {
   selectedCampusId: number | null
+  /** "All my campuses" view (scope-locked users with several campuses). */
+  isCombined: boolean
   /** True when the active user has exactly one assigned campus (or is
    *  scope-locked to a single one) — in which case the topbar switcher
    *  renders as a read-only pill and the value must not be cleared. */
   isLocked: boolean
   setSelectedCampusId: (id: number | null) => void
+  /** Switch to the combined "All my campuses" view. No-op when locked. */
+  setCombined: () => void
   clear: () => void
   /** Reconcile the persisted scope with the authenticated user:
    *   • 1 assigned campus      → force-select it, lock the switcher
-   *   • N>1 + scope-locked     → if current pick isn't in the set, snap to the first
+   *   • N>1 + scope-locked     → keep the combined view or a valid pick;
+   *                              otherwise snap to the first campus
    *   • free / admin           → leave the pick alone (null = "all")
    *  Should be called whenever `auth.user` changes (login, refresh, role
    *  edit, campus assignment edit). */
@@ -44,18 +50,23 @@ export const useCampusFilterStore = create<CampusFilterState>()(
   persist(
     (set, get) => ({
       selectedCampusId: null,
+      isCombined: false,
       isLocked: false,
       setSelectedCampusId: (id) => {
         if (get().isLocked) return
-        set({ selectedCampusId: id })
+        set({ selectedCampusId: id, isCombined: false })
+      },
+      setCombined: () => {
+        if (get().isLocked) return
+        set({ selectedCampusId: null, isCombined: true })
       },
       clear: () => {
         if (get().isLocked) return
-        set({ selectedCampusId: null })
+        set({ selectedCampusId: null, isCombined: false })
       },
       syncFromUser: (user) => {
         if (!user) {
-          set({ selectedCampusId: null, isLocked: false })
+          set({ selectedCampusId: null, isCombined: false, isLocked: false })
           return
         }
         const assigned = (user.assigned_campuses ?? [])
@@ -70,15 +81,21 @@ export const useCampusFilterStore = create<CampusFilterState>()(
         // switcher then renders as a read-only pill so the user can SEE
         // which campus they're scoped to but can't drift off it.
         if (assigned.length === 1) {
-          set({ selectedCampusId: assigned[0], isLocked: true })
+          set({ selectedCampusId: assigned[0], isCombined: false, isLocked: true })
           return
         }
 
-        // Multi-assigned + scope-locked → keep current pick only if it's
-        // still in their allowed set, otherwise snap to the first.
+        // Multi-assigned + scope-locked → keep the combined view if it was
+        // chosen, otherwise keep the current pick only if it's still in their
+        // allowed set, else snap to the first campus.
         if (scopeLocked && assigned.length > 1) {
+          if (get().isCombined) {
+            set({ selectedCampusId: null, isCombined: true, isLocked: false })
+            return
+          }
           set({
             selectedCampusId: currentInSet ? current : assigned[0],
+            isCombined:       false,
             isLocked:         false,
           })
           return
@@ -90,18 +107,18 @@ export const useCampusFilterStore = create<CampusFilterState>()(
         // other catalog entry afterwards, but the page lands scoped to a
         // campus they actually belong to instead of leaking "All".
         if (assigned.length > 1 && !currentInSet) {
-          set({ selectedCampusId: assigned[0], isLocked: false })
+          set({ selectedCampusId: assigned[0], isCombined: false, isLocked: false })
           return
         }
 
         // No assignments (admin or unaffiliated) — leave the pick alone
         // (null = "all campuses") and ensure the switcher is unlocked.
-        set({ isLocked: false })
+        set({ isCombined: false, isLocked: false })
       },
     }),
     {
       name: 'cur-mis:campus-filter',
-      partialize: (state) => ({ selectedCampusId: state.selectedCampusId }),
+      partialize: (state) => ({ selectedCampusId: state.selectedCampusId, isCombined: state.isCombined }),
     },
   ),
 )

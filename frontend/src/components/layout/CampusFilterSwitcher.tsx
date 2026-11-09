@@ -27,7 +27,7 @@ import { usePermission } from '@/utils/permissions'
  */
 export default function CampusFilterSwitcher() {
   const { user } = useAuthStore()
-  const { selectedCampusId, setSelectedCampusId, syncFromUser } =
+  const { selectedCampusId, isCombined, setSelectedCampusId, setCombined, syncFromUser } =
     useCampusFilterStore()
   const queryClient = useQueryClient()
   const [open, setOpen] = useState(false)
@@ -109,7 +109,11 @@ export default function CampusFilterSwitcher() {
   // correct default for them is `null` = "All campuses".
   const storeSelected     = my.find((c: any) => Number(c.id) === selectedCampusId) ?? null
   const fallbackSelected  = assignments[0] ?? null
-  const selected          = storeSelected ?? fallbackSelected
+  // Scope-locked users with several campuses and no single pick are on the
+  // combined view ("All my campuses"): every assigned campus at once, so
+  // don't fall back to the first campus for them.
+  const isCombinedLocked  = isScopeLocked && !isLockedToOne && isCombined
+  const selected          = isCombinedLocked ? null : (storeSelected ?? fallbackSelected)
 
   // ── Locked single-campus mode ───────────────────────────────────────
   // Exactly one assignment → render a read-only pill with a lock icon.
@@ -131,14 +135,22 @@ export default function CampusFilterSwitcher() {
   const label = selected
     ? selected.name
     : isScopeLocked
-      ? 'My campuses'
+      ? 'All my campuses'
       : hasManageUsers
         ? 'All campuses'
-        : 'My campuses'
+        : 'All my campuses'
 
   /** Refetch every page that reads campus-aware data so the UI flips
    *  immediately. We invalidate top-level service prefixes rather than
    *  naming individual queries, so future pages benefit too. */
+  const combineAll = () => {
+    setCombined()
+    setOpen(false)
+    queryClient.invalidateQueries({ queryKey: ['students'] })
+    queryClient.invalidateQueries({ queryKey: ['student-stats'] })
+    queryClient.invalidateQueries({ queryKey: ['student-stats-all-years'] })
+  }
+
   const setScope = (id: number | null) => {
     setSelectedCampusId(id)
     setOpen(false)
@@ -170,13 +182,15 @@ export default function CampusFilterSwitcher() {
 
           {/* Scope-locked users can pick any of their campuses but cannot
               opt out into "all campuses". Hide the All option for them. */}
-          {!isScopeLocked && (
+          {/* Scope-locked users with several campuses get the combined
+              "All my campuses" view: only their assigned campuses, together. */}
+          {(
             <button
               type="button"
-              onClick={() => setScope(null)}
+              onClick={() => (isScopeLocked ? combineAll() : setScope(null))}
               className={
                 'w-full flex items-center justify-between px-3 py-2 text-[12.5px] transition-colors ' +
-                (selectedCampusId == null
+                ((isScopeLocked ? isCombinedLocked : selectedCampusId == null)
                   ? 'bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-200 font-semibold'
                   : 'text-ink-700 dark:text-ink-200 hover:bg-ink-50 dark:hover:bg-ink-800')
               }

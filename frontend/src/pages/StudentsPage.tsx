@@ -24,6 +24,8 @@ import {
 } from "lucide-react";
 import {
   studentService,
+  combinedCampusIds,
+  fetchCombinedStats,
   type StudentStats,
   type StudentListParams,
   type FacetOption,
@@ -105,17 +107,21 @@ export default function StudentsPage() {
   // Global academic year (topnav selector). Empty string = all years.
   const selectedYear = useSystemStore((s) => s.selectedYearLabel);
   const selectedCampus = useCampusFilterStore((s) => s.selectedCampusId);
+  const isCombined = useCampusFilterStore((s) => s.isCombined);
   const selectedCategory = useCategoryFilterStore((s) => s.selectedCategory);
 
   // Shared stats — refetched when the global year / campus / category
   // change so every metric (counts, charts, breakdowns) re-scopes.
+  // "All my campuses" adds up one request per campus in the browser.
   const statsQ = useQuery({
-    queryKey: ["student-stats", selectedYear || "all", selectedCampus, selectedCategory ?? "all"],
+    queryKey: ["student-stats", selectedYear || "all", selectedCampus, isCombined, selectedCategory ?? "all"],
     queryFn: () =>
-      studentService.stats({ acc_year: selectedYear || undefined }),
+      isCombined
+        ? fetchCombinedStats(combinedCampusIds(), { acc_year: selectedYear || undefined })
+        : studentService.stats({ acc_year: selectedYear || undefined }).then((r) => r.data),
     staleTime: 60_000,
   });
-  const stats: StudentStats | null = statsQ.data?.data ?? null;
+  const stats: StudentStats | null = statsQ.data ?? null;
 
   return (
     <div className="max-w-none mx-auto space-y-5">
@@ -176,13 +182,17 @@ export function ActiveTab({
   const s = stats;
 
   // Fetch cumulative stats (all years) for the main number
+  const campusScopeKey = useCampusFilterStore((s) => (s.isCombined ? "combined" : s.selectedCampusId ?? "all"));
   const allYearsStatsQ = useQuery({
-    queryKey: ["student-stats-all-years"],
-    queryFn: () => studentService.stats({ acc_year: undefined }),
+    queryKey: ["student-stats-all-years", campusScopeKey],
+    queryFn: () =>
+      useCampusFilterStore.getState().isCombined
+        ? fetchCombinedStats(combinedCampusIds())
+        : studentService.stats({ acc_year: undefined }).then((r) => r.data),
     staleTime: 60_000,
   });
 
-  const cumulativeStats = allYearsStatsQ.data?.data ?? null;
+  const cumulativeStats = allYearsStatsQ.data ?? null;
   const cumulativeTotal = cumulativeStats?.active ?? 0;
 
   // Use cumulative stats for all metrics

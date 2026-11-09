@@ -509,11 +509,114 @@ function withGlobalScopes<T extends object>(params: T): Record<string, unknown> 
   const merged: Record<string, unknown> = { ...(params as Record<string, unknown>) }
   if (scopeId != null && (merged.campus == null || merged.campus === '')) {
     merged.campus = String(scopeId)
+  } else if (scopeId == null && (merged.campus == null || merged.campus === '')) {
+    // Safety net: a scope-locked user must never fall back to every campus.
+    // The combined overview sends explicit per-campus requests instead.
+    const campusIds = combinedCampusIds()
+    if (campusIds.length > 0) {
+      merged.campus = String(campusIds[0])
+    }
   }
   if (category != null && (merged.category == null || merged.category === '')) {
     merged.category = category
   }
   return merged
+}
+
+/** The campus ids a scope-locked user may combine (their own assignments). */
+export function combinedCampusIds(): number[] {
+  const user = useAuthStore.getState().user
+  if (!user?.enforce_campus_scope) return []
+  const ids = (user.assigned_campuses ?? [])
+    .map((c) => Number(c.id))
+    .filter((n) => Number.isFinite(n) && n > 0)
+  return Array.from(new Set(ids))
+}
+
+/** Add up breakdown rows from several campuses, keyed by their value. */
+function mergeRows(lists: BreakdownRow[][]): BreakdownRow[] {
+  const byKey = new Map<string, BreakdownRow>()
+  for (const list of lists) {
+    for (const row of list) {
+      const prev = byKey.get(row.value)
+      const total = Number(row.total) || 0
+      if (prev) {
+        prev.total = Number(prev.total) + total
+      } else {
+        byKey.set(row.value, { ...row, total })
+      }
+    }
+  }
+  return [...byKey.values()].sort((a, b) => Number(b.total) - Number(a.total))
+}
+
+/** Numeric stats that add up exactly across campuses (students are not shared). */
+const ADDITIVE_STAT_KEYS = [
+  'total', 'active', 'inactive', 'male', 'female', 'rwandan', 'foreign_students',
+  'active_male', 'active_female', 'active_unknown_gender', 'active_rwandan',
+  'active_foreign', 'active_unknown_nationality',
+] as const
+
+/**
+ * Combine per-campus stats into one StudentStats. Counts are summed. Distinct
+ * counts (faculties, departments, academic years) are unions of the campus
+ * breakdowns, so a faculty that appears on two campuses is counted once.
+ */
+function mergeStudentStats(parts: StudentStats[], yearsByCampus: string[][], yearFilterGiven: boolean): StudentStats {
+  const base = parts[0]
+  const merged = { ...base } as StudentStats & Record<string, unknown>
+
+  for (const key of ADDITIVE_STAT_KEYS) {
+    merged[key] = parts.reduce((sum, p) => sum + (Number(p[key]) || 0), 0)
+  }
+
+  const bd = (p: StudentStats) => p.active_breakdown ?? ({} as StudentStats['active_breakdown'])
+  const unionCount = (pick: (p: StudentStats) => BreakdownRow[] | undefined) =>
+    new Set(parts.flatMap((p) => (pick(p) ?? []).map((r) => r.value))).size
+
+  merged.active_faculties   = unionCount((p) => bd(p).by_faculty)
+  merged.active_departments = unionCount((p) => bd(p).by_department)
+  merged.faculties          = merged.active_faculties
+  // A year filter leaves one academic year at most; otherwise take the union.
+  merged.active_academic_years = yearFilterGiven
+    ? (merged.active > 0 ? 1 : 0)
+    : new Set(yearsByCampus.flat()).size
+  merged.academic_years = merged.active_academic_years
+
+  // Top-level by_level rows are keyed by `level`, not `value`: map them first.
+  merged.by_level = mergeRows(
+    parts.map((p) => (p.by_level ?? []).map((r) => ({ value: String(r.level), label: String(r.level), total: r.total }))),
+  ).map((r) => ({ level: r.value, total: r.total })) as StudentStats['by_level']
+  merged.active_breakdown = {
+    by_faculty:       mergeRows(parts.map((p) => bd(p).by_faculty ?? [])),
+    by_department:    mergeRows(parts.map((p) => bd(p).by_department ?? [])),
+    by_level:         mergeRows(parts.map((p) => bd(p).by_level ?? [])),
+    by_program:       mergeRows(parts.map((p) => bd(p).by_program ?? [])),
+    by_learning_mode: mergeRows(parts.map((p) => bd(p).by_learning_mode ?? [])),
+    by_campus:        mergeRows(parts.map((p) => bd(p).by_campus ?? [])),
+    by_intake:        mergeRows(parts.map((p) => bd(p).by_intake ?? [])),
+  }
+  return merged
+}
+
+/**
+ * The overview's stats for several campuses at once, combined in the browser.
+ * Makes one stats request and one filter-options request per campus, so the
+ * numbers match what each campus shows on its own.
+ */
+export async function fetchCombinedStats(
+  campusIds: number[],
+  params: { acc_year?: string } = {},
+): Promise<StudentStats> {
+  const [statsRes, optionRes] = await Promise.all([
+    Promise.all(campusIds.map((id) => studentService.stats({ acc_year: params.acc_year, campus: id }))),
+    Promise.all(campusIds.map((id) => studentService.filterOptions({ campus: id, student_state: 'active' }))),
+  ])
+  const parts = statsRes.map((r) => r.data as StudentStats)
+  const yearsByCampus = optionRes.map((r) =>
+    (r.data?.academic_years ?? []).filter((y) => Number(y.total) > 0).map((y) => y.value),
+  )
+  return mergeStudentStats(parts, yearsByCampus, !!params.acc_year)
 }
 
 export const studentService = {
