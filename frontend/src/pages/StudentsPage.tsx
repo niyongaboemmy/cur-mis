@@ -177,9 +177,13 @@ export function ActiveTab({
 }) {
   const s = stats;
 
-  // Fetch cumulative stats (all years) for the main number
+  // Fetch cumulative stats (all years) for the main number. Keyed on the
+  // top-bar campus and category, which studentService.stats sends: without
+  // them a campus switch kept showing the previous campus's numbers.
+  const selectedCampus = useCampusFilterStore((state) => state.selectedCampusId);
+  const selectedCategory = useCategoryFilterStore((state) => state.selectedCategory);
   const allYearsStatsQ = useQuery({
-    queryKey: ["student-stats-all-years"],
+    queryKey: ["student-stats-all-years", selectedCampus, selectedCategory ?? "all"],
     queryFn: () => studentService.stats({ acc_year: undefined }),
     staleTime: 60_000,
   });

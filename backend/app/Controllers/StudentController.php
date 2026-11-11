@@ -17,6 +17,7 @@ use App\Models\OptionModel;
 use App\Helpers\ValidationHelper;
 use App\Helpers\FileServerClient;
 use App\Services\AcademicScopeService;
+use App\Services\CampusScopeService;
 use App\Services\SystemLogService;
 use App\Services\StudentDocumentComplianceService;
 
@@ -300,6 +301,14 @@ class StudentController extends BaseController
         if ($deptCond !== null) {
             $clauses[] = $deptCond[0];
             $bindings  = array_merge($bindings, $deptCond[1]);
+        }
+
+        // Campus-locked role: only the user's campuses, whether or not a campus is
+        // picked in the top bar (a picked campus outside the set yields nothing).
+        $campusCond = CampusScopeService::studentCondition((array)($request->param('_auth_user') ?? []), $p . 'campus');
+        if ($campusCond !== null) {
+            $clauses[] = $campusCond[0];
+            $bindings  = array_merge($bindings, $campusCond[1]);
         }
 
         $where = $clauses ? implode(' AND ', $clauses) : '';
@@ -3788,11 +3797,20 @@ class StudentController extends BaseController
             $deptBind   = $deptCond[1];
         }
 
+        // Campus-locked role: only the user's campuses. With no campus picked in the
+        // top bar this is "all my campuses"; a picked campus narrows it to one.
+        $authUser    = (array)($request->param('_auth_user') ?? []);
+        $lockCond    = CampusScopeService::studentCondition($authUser, 'campus');
+        $lockCondS   = CampusScopeService::studentCondition($authUser, 's.campus');
+        $lockScope   = $lockCond  !== null ? " AND {$lockCond[0]}"  : '';
+        $lockScopeS  = $lockCondS !== null ? " AND {$lockCondS[0]}" : '';
+        $lockBind    = $lockCond[1] ?? [];
+
         // Convenience: merge year + campus + category + scope into a single bound
         // list so each aggregate uses one consistent params array.
-        $combined  = $yearScope . $campusScope . $categoryScope . $deptScope;
-        $combinedS = $yearScopeS . $campusScopeS . $categoryScopeS . $deptScopeS;
-        $bind      = array_merge($yearBind, $campusBind, $categoryBind, $deptBind);
+        $combined  = $yearScope . $campusScope . $categoryScope . $deptScope . $lockScope;
+        $combinedS = $yearScopeS . $campusScopeS . $categoryScopeS . $deptScopeS . $lockScopeS;
+        $bind      = array_merge($yearBind, $campusBind, $categoryBind, $deptBind, $lockBind);
 
         $row = $db->fetchOne("
             SELECT
@@ -3937,28 +3955,28 @@ class StudentController extends BaseController
             SELECT DISTINCT s.faculty AS v, f.fac_name AS label
             FROM student s
             LEFT JOIN faculty f ON CAST(f.fac_id AS CHAR) COLLATE utf8mb4_unicode_ci = s.faculty COLLATE utf8mb4_unicode_ci
-            WHERE s.faculty IS NOT NULL AND s.faculty <> ''{$deptScopeS}
+            WHERE s.faculty IS NOT NULL AND s.faculty <> ''{$deptScopeS}{$lockScopeS}
             ORDER BY label IS NULL, label ASC
             LIMIT 100
-        ", $deptBind);
+        ", array_merge($deptBind, $lockBind));
         $departments = $db->fetchAll("
             SELECT DISTINCT s.department AS v, d.dep_name AS label
             FROM student s
             LEFT JOIN departements d ON CAST(d.dep_id AS CHAR) COLLATE utf8mb4_unicode_ci = s.department COLLATE utf8mb4_unicode_ci
-            WHERE s.department IS NOT NULL AND s.department <> ''{$deptScopeS}
+            WHERE s.department IS NOT NULL AND s.department <> ''{$deptScopeS}{$lockScopeS}
             ORDER BY label IS NULL, label ASC
             LIMIT 100
-        ", $deptBind);
+        ", array_merge($deptBind, $lockBind));
         $levels = $db->fetchAll("
             SELECT DISTINCT s.current_level AS v, l.name AS label
             FROM student s
             LEFT JOIN levels l ON l.id = s.current_level
-            WHERE s.current_level IS NOT NULL AND s.current_level <> ''{$deptScopeS}
+            WHERE s.current_level IS NOT NULL AND s.current_level <> ''{$deptScopeS}{$lockScopeS}
             ORDER BY s.current_level ASC
             LIMIT 50
-        ", $deptBind);
-        $years    = $db->fetchAll("SELECT DISTINCT acc_year AS v, acc_year AS label FROM student WHERE acc_year IS NOT NULL AND acc_year <> ''{$deptScope} ORDER BY acc_year DESC LIMIT 30", $deptBind);
-        $programs = $db->fetchAll("SELECT DISTINCT program  AS v, program  AS label FROM student WHERE program  IS NOT NULL AND program  <> ''{$deptScope} ORDER BY program  ASC LIMIT 50", $deptBind);
+        ", array_merge($deptBind, $lockBind));
+        $years    = $db->fetchAll("SELECT DISTINCT acc_year AS v, acc_year AS label FROM student WHERE acc_year IS NOT NULL AND acc_year <> ''{$deptScope}{$lockScope} ORDER BY acc_year DESC LIMIT 30", array_merge($deptBind, $lockBind));
+        $programs = $db->fetchAll("SELECT DISTINCT program  AS v, program  AS label FROM student WHERE program  IS NOT NULL AND program  <> ''{$deptScope}{$lockScope} ORDER BY program  ASC LIMIT 50", array_merge($deptBind, $lockBind));
 
         // Programs/options pulled from the catalogue, with the parent
         // department + faculty so the student edit form can show a single
@@ -5782,6 +5800,13 @@ class StudentController extends BaseController
         if ($deptCond !== null) {
             $clauses[] = $deptCond[0];
             $bindings  = array_merge($bindings, $deptCond[1]);
+        }
+
+        // Campus-locked role: international students on the user's campuses only.
+        $campusCond = CampusScopeService::studentCondition((array)($request->param('_auth_user') ?? []), 's.campus');
+        if ($campusCond !== null) {
+            $clauses[] = $campusCond[0];
+            $bindings  = array_merge($bindings, $campusCond[1]);
         }
 
         return [implode(' AND ', $clauses), $bindings];

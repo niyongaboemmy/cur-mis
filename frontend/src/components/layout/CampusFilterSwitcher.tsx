@@ -16,10 +16,11 @@ import { usePermission } from '@/utils/permissions'
  * Auto-select rules:
  *   • exactly 1 assigned campus → it's picked + the pill is rendered as
  *     a read-only lock-icon pill (no dropdown, can't be cleared).
- *   • scope-locked + multiple    → dropdown limited to the user's set,
- *     first one auto-selected, no "All campuses" escape hatch.
+ *   • scope-locked + multiple    → "All my campuses" by default, with a
+ *     dropdown limited to the user's set to narrow to one. The server keeps
+ *     "all" inside the set.
  *   • free / admin               → full catalog or assignments dropdown;
- *     first assignment is the default landing pick instead of "All".
+ *     "All campuses" by default.
  *
  * Lock state is derived from `user.assigned_campuses` synchronously so the
  * pill renders correctly on the very first paint — no flash of "nothing"
@@ -100,15 +101,12 @@ export default function CampusFilterSwitcher() {
   // No campuses anywhere → nothing meaningful to render.
   if (my.length === 0) return null
 
-  // Effective selection — prefer the persisted store pick, but fall back
-  // to the user's first assignment so the FIRST render already shows a
-  // sensible default. `syncFromUser` will persist this on the next tick.
-  //
-  // For users with zero assignments (admins with full catalog access),
-  // we deliberately do NOT fall back to the first catalog entry — the
-  // correct default for them is `null` = "All campuses".
+  // Effective selection — the persisted store pick. A single-campus user
+  // falls back to their one campus so the FIRST render already shows it
+  // (`syncFromUser` persists it on the next tick); everyone else defaults
+  // to `null` = all campuses.
   const storeSelected     = my.find((c: any) => Number(c.id) === selectedCampusId) ?? null
-  const fallbackSelected  = assignments[0] ?? null
+  const fallbackSelected  = isLockedToOne ? (assignments[0] ?? null) : null
   const selected          = storeSelected ?? fallbackSelected
 
   // ── Locked single-campus mode ───────────────────────────────────────
@@ -128,13 +126,10 @@ export default function CampusFilterSwitcher() {
     )
   }
 
-  const label = selected
-    ? selected.name
-    : isScopeLocked
-      ? 'My campuses'
-      : hasManageUsers
-        ? 'All campuses'
-        : 'My campuses'
+  // "All my campuses" only where the server really limits "all" to the
+  // user's set (scope-locked roles); otherwise "all" means every campus.
+  const allLabel = isScopeLocked ? 'All my campuses' : 'All campuses'
+  const label = selected ? selected.name : allLabel
 
   /** Refetch every page that reads campus-aware data so the UI flips
    *  immediately. We invalidate top-level service prefixes rather than
@@ -168,23 +163,21 @@ export default function CampusFilterSwitcher() {
             Scope every page to
           </p>
 
-          {/* Scope-locked users can pick any of their campuses but cannot
-              opt out into "all campuses". Hide the All option for them. */}
-          {!isScopeLocked && (
-            <button
-              type="button"
-              onClick={() => setScope(null)}
-              className={
-                'w-full flex items-center justify-between px-3 py-2 text-[12.5px] transition-colors ' +
-                (selectedCampusId == null
-                  ? 'bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-200 font-semibold'
-                  : 'text-ink-700 dark:text-ink-200 hover:bg-ink-50 dark:hover:bg-ink-800')
-              }
-            >
-              <span>{hasManageUsers ? 'All campuses' : 'All my campuses'}</span>
-              {selectedCampusId == null && <Check className="w-3.5 h-3.5" />}
-            </button>
-          )}
+          {/* For scope-locked users "All" covers only their own campuses —
+              the server limits it to their set. */}
+          <button
+            type="button"
+            onClick={() => setScope(null)}
+            className={
+              'w-full flex items-center justify-between px-3 py-2 text-[12.5px] transition-colors ' +
+              (selectedCampusId == null
+                ? 'bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-200 font-semibold'
+                : 'text-ink-700 dark:text-ink-200 hover:bg-ink-50 dark:hover:bg-ink-800')
+            }
+          >
+            <span>{allLabel}</span>
+            {selectedCampusId == null && <Check className="w-3.5 h-3.5" />}
+          </button>
 
           <div className="max-h-72 overflow-y-auto">
             {my.map((c: any) => {

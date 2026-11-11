@@ -33,7 +33,8 @@ interface CampusFilterState {
   clear: () => void
   /** Reconcile the persisted scope with the authenticated user:
    *   • 1 assigned campus      → force-select it, lock the switcher
-   *   • N>1 + scope-locked     → if current pick isn't in the set, snap to the first
+   *   • N>1 + scope-locked     → keep the pick if it's in the set, else null
+   *                              ("All my campuses" — the server limits it to the set)
    *   • free / admin           → leave the pick alone (null = "all")
    *  Should be called whenever `auth.user` changes (login, refresh, role
    *  edit, campus assignment edit). */
@@ -74,34 +75,32 @@ export const useCampusFilterStore = create<CampusFilterState>()(
           return
         }
 
-        // Multi-assigned + scope-locked → keep current pick only if it's
-        // still in their allowed set, otherwise snap to the first.
-        if (scopeLocked && assigned.length > 1) {
+        // Scope-locked → keep the current pick only if it's still in their
+        // allowed set, otherwise show all of their campuses at once (null).
+        // "All" is safe here: the server limits every campus-aware list to the
+        // user's assigned campuses whenever no single campus is picked.
+        if (scopeLocked) {
           set({
-            selectedCampusId: currentInSet ? current : assigned[0],
+            selectedCampusId: currentInSet ? current : null,
             isLocked:         false,
           })
           return
         }
 
-        // Multi-assigned + free → default to the user's first assignment
-        // when nothing was picked yet (or the saved pick is no longer in
-        // their set). Admins can still flip to "All campuses" or to any
-        // other catalog entry afterwards, but the page lands scoped to a
-        // campus they actually belong to instead of leaking "All".
-        if (assigned.length > 1 && !currentInSet) {
-          set({ selectedCampusId: assigned[0], isLocked: false })
-          return
-        }
-
-        // No assignments (admin or unaffiliated) — leave the pick alone
-        // (null = "all campuses") and ensure the switcher is unlocked.
+        // Free (several assignments, or none) — leave the pick alone; null
+        // means "All campuses" and is the default. The switcher drops a saved
+        // pick that no longer exists.
         set({ isLocked: false })
       },
     }),
     {
       name: 'cur-mis:campus-filter',
       partialize: (state) => ({ selectedCampusId: state.selectedCampusId }),
+      // v1: multi-campus users used to be pinned to their first campus
+      // automatically. Drop that saved pick once so they land on all of
+      // their campuses; single-campus users are re-pinned by syncFromUser.
+      version: 1,
+      migrate: () => ({ selectedCampusId: null }),
     },
   ),
 )
