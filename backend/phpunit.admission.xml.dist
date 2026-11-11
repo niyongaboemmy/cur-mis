@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Admission payment tests (allocation, credit ledger, callbacks).
+
+  These use a real MariaDB schema. Point DB_DATABASE at a disposable database
+  whose name ends in _test; the suite refuses to run against anything else.
+  Override the defaults from the shell, e.g.:
+
+    set DB_DATABASE=cur_mis_credit_test
+    php vendor/bin/phpunit -c phpunit.admission.xml.dist
+-->
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
+         bootstrap="tests/bootstrap.php"
+         colors="true"
+         failOnWarning="true">
+    <testsuites>
+        <testsuite name="admission-credits">
+            <directory>tests/Admission</directory>
+        </testsuite>
+    </testsuites>
+    <php>
+        <env name="CUR_TEST_DB" value="1"/>
+        <env name="DB_HOST" value="127.0.0.1"/>
+        <env name="DB_PORT" value="3306"/>
+        <env name="DB_DATABASE" value="cur_mis_credit_test"/>
+        <env name="DB_USERNAME" value="root"/>
+        <env name="DB_PASSWORD" value=""/>
+        <env name="MAIL_FROM_ADDRESS" value="tests@example.com"/>
+    </php>
+</phpunit>

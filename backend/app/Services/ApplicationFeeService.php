@@ -426,6 +426,10 @@ class ApplicationFeeService
             ];
         }
 
+        // Carry a legacy (flat-column) settlement into the ledger before the first new row,
+        // or the mirror below would be rewritten from the new row alone.
+        $this->carryLegacyFlatPayment($applicationId);
+
         $this->db->execute(
             "INSERT INTO `application_fee_payments`
                 (application_id, amount, currency, payment_method, reference_number,
@@ -481,6 +485,62 @@ class ApplicationFeeService
             'payment_id' => $paymentId,
             'summary'    => $after,
         ];
+    }
+
+    /**
+     * A settlement recorded before the ledger existed, or approved through the claim path,
+     * lives only on the flat columns (transaction_id, payment_amount, paid_at). Copy it into
+     * the ledger so the ledger is the complete record. Does nothing once the ledger has rows.
+     */
+    private function carryLegacyFlatPayment(int $applicationId): void
+    {
+        $hasLedger = $this->db->fetchOne(
+            'SELECT id FROM `application_fee_payments` WHERE application_id = ? LIMIT 1',
+            [$applicationId]
+        );
+        if ($hasLedger) {
+            return;
+        }
+
+        $app = $this->db->fetchOne(
+            'SELECT payment_amount, payment_currency, transaction_id, paid_at FROM `student_applications` WHERE id = ?',
+            [$applicationId]
+        );
+        $flat = (float)($app['payment_amount'] ?? 0);
+        if (!$app || $flat <= 0) {
+            return;
+        }
+
+        $reference = trim((string)($app['transaction_id'] ?? '')) ?: 'LEGACY-' . $applicationId;
+
+        $this->db->execute(
+            "INSERT INTO `application_fee_payments`
+                (application_id, amount, currency, payment_method, reference_number,
+                 receipt_number, service_code, source, recorded_by, notes, paid_at)
+             VALUES (?, ?, ?, 'MANUAL', ?, ?, NULL, 'MANUAL', NULL, ?, ?)",
+            [
+                $applicationId,
+                round($flat, 2),
+                $app['payment_currency'] ?: 'RWF',
+                $reference,
+                $this->generateReceiptNumber(),
+                'Carried from a settlement recorded before the ledger',
+                $app['paid_at'] ?: date('Y-m-d H:i:s'),
+            ]
+        );
+    }
+
+    /** The application-fee ledger row already holding this gateway reference, if any. */
+    public function paymentIdForReference(int $applicationId, string $reference): ?int
+    {
+        $row = $this->db->fetchOne(
+            "SELECT id FROM `application_fee_payments`
+              WHERE application_id = ? AND reference_number = ?
+              LIMIT 1",
+            [$applicationId, trim($reference)]
+        );
+
+        return $row ? (int)$row['id'] : null;
     }
 
     /** RCP-YYYYMMDD-XXXXXX, the shape used across the admission ledgers. */

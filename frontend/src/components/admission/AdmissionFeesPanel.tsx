@@ -338,6 +338,14 @@ export default function AdmissionFeesPanel({
         </div>
       )}
 
+      {/* Money received but not yet on a bill — applied automatically once the bill is raised */}
+      {!isValidator && (data?.credit?.unapplied ?? 0) > 0 && (
+        <div className="p-3 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-900/30 text-[12px] text-emerald-800 dark:text-emerald-200">
+          <span className="font-semibold">{fmt(data?.credit?.unapplied ?? 0)} RWF</span> received and held on your account.
+          It will be applied to your admission fees automatically as each bill is raised.
+        </div>
+      )}
+
       {/* Validator Alert: Insufficient Payment */}
       {isValidator && ledger && ledger.billed && !ledger.sufficient && canManage && (
         <div className="p-4 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 flex items-start gap-3">

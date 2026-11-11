@@ -592,12 +592,35 @@ export interface AdmissionBillable {
   reason:           string | null
 }
 
+/**
+ * Money the gateway confirmed that is not yet on a bill. It is drawn down
+ * automatically when the matching bill is raised. `unapplied` is the amount
+ * still waiting; `allocated` is what has already reached a bill.
+ */
+export interface AdmissionCreditSummary {
+  received:  number
+  allocated: number
+  unapplied: number
+  entries: Array<{
+    id:               number
+    reference:        string
+    source:           string
+    service_code:     string | null
+    amount_received:  number
+    amount_allocated: number
+    amount_remaining: number
+    status:           string
+    received_at:      string
+  }>
+}
+
 export interface AdmissionBillingOverview {
   application_id:       number
   application_number:   string
   status:               string
   bills:                AdmissionBill[]
   payments:             AdmissionBillPayment[]
+  credit?:              AdmissionCreditSummary
   summary: {
     total_due:  number
     total_paid: number
