@@ -9,6 +9,7 @@ use Core\Response;
 use Core\Database;
 use App\Models\StudentIdModel;
 use App\Helpers\DocumentHelper;
+use App\Helpers\FrontendUrl;
 use App\Helpers\StudentIdCardHelper;
 use App\Services\SystemLogService;
 
@@ -382,28 +383,7 @@ class StudentIdController extends BaseController
      */
     private function verifyUrl(string $barcode, Request $request): string
     {
-        // APP_FRONTEND_URL must include the sub-path, e.g. https://cur.ac.rw/umis
-        $base = trim((string) ($_ENV['APP_FRONTEND_URL'] ?? getenv('APP_FRONTEND_URL') ?: ''));
-
-        if ($base === '') {
-            // Derive base from Referer, preserving its path prefix up to the
-            // first segment so /umis/... referers yield https://host/umis.
-            $ref = (string) ($request->header('Referer') ?? '');
-            if ($ref !== '' && ($p = parse_url($ref))) {
-                $path     = $p['path'] ?? '/';
-                $segments = explode('/', trim($path, '/'));
-                $prefix   = isset($segments[0]) && $segments[0] !== '' ? '/' . $segments[0] : '';
-                $base     = ($p['scheme'] ?? 'https') . '://' . ($p['host'] ?? '')
-                          . (isset($p['port']) ? ':' . $p['port'] : '')
-                          . $prefix;
-            }
-        }
-
-        if ($base === '') {
-            $base = 'https://cur.ac.rw/umis';
-        }
-
-        return rtrim($base, '/') . '/verify/student?code=' . rawurlencode($barcode);
+        return FrontendUrl::base($request) . '/verify/student?code=' . rawurlencode($barcode);
     }
 
     /** Build a unique, alphanumeric barcode from the registration number. */

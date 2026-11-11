@@ -10,6 +10,7 @@ use Core\Database;
 use App\Constants\Permissions;
 use App\Helpers\ValidationHelper;
 use App\Helpers\TranscriptPdf;
+use App\Services\TranscriptVerificationService;
 use App\Helpers\LevelHelper;
 use App\Helpers\GradingScale;
 use App\Services\AuthService;
@@ -1361,7 +1362,9 @@ class ModuleMarksController extends BaseController
         $this->ensureCanReadStudent($request, $response, $reg);
 
         [$rows, , $student] = $this->loadTranscriptRows($reg, $request);
-        $html = TranscriptPdf::buildHtml($student, $rows);
+        // Recorded under a verification code printed, with its QR, on every sheet.
+        $verification = TranscriptVerificationService::issue($student, $rows, $this->authUserId($request) ?: null, $request);
+        $html = TranscriptPdf::buildHtml($student, $rows, $verification);
         TranscriptPdf::stream($html, "transcript-{$reg}.pdf");
     }
 
@@ -1398,7 +1401,9 @@ class ModuleMarksController extends BaseController
         if (!$reg) $this->error($response, 'No student profile linked to this account.', 404);
 
         [$rows, , $student] = $this->loadTranscriptRows($reg, $request);
-        $html = TranscriptPdf::buildHtml($student, $rows);
+        // Recorded under a verification code printed, with its QR, on every sheet.
+        $verification = TranscriptVerificationService::issue($student, $rows, $this->authUserId($request) ?: null, $request);
+        $html = TranscriptPdf::buildHtml($student, $rows, $verification);
         TranscriptPdf::stream($html, "transcript-{$reg}.pdf");
     }
 

@@ -121,6 +121,7 @@ import AnnouncementsPage from "@/pages/announcements/AnnouncementsPage";
 import ForumsPage from "@/pages/forums/ForumsPage";
 import ForumThreadPage from "@/pages/forums/ForumThreadPage";
 import VerifyStudentPage from "@/pages/public/VerifyStudentPage";
+import VerifyTranscriptPage from "@/pages/public/VerifyTranscriptPage";
 // Help Centre — end-user documentation. Deliberately ungated: every role
 // needs to be able to read every guide, including one written for another role.
 import HelpCenterPage from "@/pages/help/HelpCenterPage";
@@ -209,6 +210,7 @@ function App() {
           <Route path="/apply/masters" element={<ApplyPage presetCategory="masters" />} />
           <Route path="/apply/track" element={<TrackApplicationPage />} />
           <Route path="/verify/student" element={<VerifyStudentPage />} />
+          <Route path="/verify/transcript" element={<VerifyTranscriptPage />} />
           <Route path="/services" element={<ServiceCatalogPage />} />
           <Route path="/services/track" element={<TrackServiceRequestPage />} />
           <Route path="/services/:slug" element={<ServiceDetailPage />} />

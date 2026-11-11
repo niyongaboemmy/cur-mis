@@ -36,8 +36,11 @@ class TranscriptPdf
     /**
      * @param array<string,mixed>             $student
      * @param array<int,array<string,mixed>>  $rows  every graded module, any level
+     * @param array{code:string,url:string,issued_on:string}|null $verification
+     *        from {@see \App\Services\TranscriptVerificationService::issue()}; when
+     *        given, every sheet carries the QR code that verifies it
      */
-    public static function buildHtml(array $student, array $rows): string
+    public static function buildHtml(array $student, array $rows, ?array $verification = null): string
     {
         $groups   = self::groupByLevel($rows);
 
@@ -45,7 +48,7 @@ class TranscriptPdf
             $pages = self::pageHtml(
                 self::bioHtml($student, self::levelLine(null)),
                 '',
-                self::closingHtml('', ''),
+                self::closingHtml('', '', $verification),
                 true
             );
         } else {
@@ -61,6 +64,7 @@ class TranscriptPdf
                     self::closingHtml(
                         self::summaryHtml($totals),
                         self::semesterNote($sheet['sems']),
+                        $verification,
                     ),
                     false,
                     !$isLast
@@ -150,10 +154,10 @@ HTML;
      * the signed copy, which is why the bands sit far right rather than beside
      * the results.
      */
-    private static function closingHtml(string $summary, string $note): string
+    private static function closingHtml(string $summary, string $note, ?array $verification = null): string
     {
         $legend  = self::legendHtml();
-        $signoff = self::signoffHtml();
+        $signoff = self::signoffHtml($verification);
 
         return <<<HTML
   <div class="closing">
@@ -205,26 +209,47 @@ HTML;
 HTML;
     }
 
+    /**
+     * One module row as printed, unescaped. Shared by the PDF table and the
+     * verification snapshot so both always carry the same values.
+     *
+     * @param  array<string,mixed> $r
+     * @return array{code:string,title:string,credits:int,marks:string,credit_point:string,grade:string}
+     */
+    private static function rowCells(array $r): array
+    {
+        $pct = $r['percentage'] !== null ? (int)round((float)$r['percentage']) : null;
+        // A curriculum gap prints "0" here — never counted in the level
+        // TOTAL row above (that recomputes from `percentage`, which this
+        // row leaves NULL) — so the sheet is honest that nothing was
+        // actually awarded while still showing the module is outstanding.
+        $notMarked = !empty($r['not_marked']);
+
+        return [
+            'code'         => (string)($r['module_code'] ?? ''),
+            'title'        => (string)($r['module_name'] ?? ''),
+            'credits'      => (int)($r['module_credits'] ?? 0),
+            'marks'        => $pct !== null ? (string)$pct : ($notMarked ? '0' : '—'),
+            'credit_point' => $r['credit_point'] !== null ? self::plain((float)$r['credit_point']) : '—',
+            // The API already grades from the scale in whole letters; a row
+            // carrying a stored "B+" straight from `module_marks` is normalised
+            // here too, so no path can print a suffix onto the signed form.
+            'grade'        => GradingScale::normalize((string)($r['grade'] ?? '')) ?? '—',
+        ];
+    }
+
     private static function tableHtml(array $rows, array $totals): string
     {
         $body = '';
         foreach ($rows as $i => $r) {
             $n       = $i + 1;
-            $code    = htmlspecialchars((string)($r['module_code'] ?? ''));
-            $title   = htmlspecialchars((string)($r['module_name'] ?? ''));
-            $credits = (int)($r['module_credits'] ?? 0);
-            $pct     = $r['percentage'] !== null ? (int)round((float)$r['percentage']) : null;
-            // A curriculum gap prints "0" here — never counted in the level
-            // TOTAL row above (that recomputes from `percentage`, which this
-            // row leaves NULL) — so the sheet is honest that nothing was
-            // actually awarded while still showing the module is outstanding.
-            $notMarked = !empty($r['not_marked']);
-            $marks   = $pct !== null ? (string)$pct : ($notMarked ? '0' : '—');
-            $cp      = $r['credit_point'] !== null ? self::plain((float)$r['credit_point']) : '—';
-            // The API already grades from the scale in whole letters; a row
-            // carrying a stored "B+" straight from `module_marks` is normalised
-            // here too, so no path can print a suffix onto the signed form.
-            $grade   = htmlspecialchars(GradingScale::normalize((string)($r['grade'] ?? '')) ?? '—');
+            $c       = self::rowCells($r);
+            $code    = htmlspecialchars($c['code']);
+            $title   = htmlspecialchars($c['title']);
+            $credits = $c['credits'];
+            $marks   = htmlspecialchars($c['marks']);
+            $cp      = htmlspecialchars($c['credit_point']);
+            $grade   = htmlspecialchars($c['grade']);
 
             // The row number sits left in its column on the printed form, not
             // centred like the marks.
@@ -305,17 +330,86 @@ HTML;
         return $items;
     }
 
-    private static function signoffHtml(): string
+    /**
+     * Registrar sign-off, with the verification QR beside it when the sheet has
+     * one. Side by side rather than stacked: the QR is about as tall as the
+     * three sign-off lines, so a sheet that fitted one page still does.
+     */
+    private static function signoffHtml(?array $verification = null): string
     {
         $registrar = htmlspecialchars(Signatories::academicRegistrar());
-        $issueLoc  = htmlspecialchars(getenv('TRANSCRIPT_ISSUE_LOCATION') ?: 'TABA');
-        $issueDate = date('d-m-y');
+        $issueLoc  = htmlspecialchars(self::issueLocation());
+        // The verification record and the printed sheet must show the same day.
+        $issueDate = isset($verification['issued_on'])
+            ? date('d-m-y', (int)strtotime((string)$verification['issued_on']))
+            : date('d-m-y');
 
-        return "<section class=\"signoff\">
-                  <div>{$registrar}</div>
+        $sign = "<div>{$registrar}</div>
                   <div>Academic Registrar</div>
-                  <div class=\"issued\">Issued at {$issueLoc} {$issueDate}</div>
-                </section>";
+                  <div class=\"issued\">Issued at {$issueLoc} {$issueDate}</div>";
+
+        $qr = $verification !== null ? QrImage::dataUri((string)$verification['url']) : null;
+        if ($qr === null) {
+            return "<section class=\"signoff\">{$sign}</section>";
+        }
+
+        return "<table class=\"signoff\"><tr>
+                  <td class=\"sign\">{$sign}</td>
+                  <td class=\"verify\"><img class=\"verify-qr\" src=\"{$qr}\" alt=\"Verification QR code\" /></td>
+                </tr></table>";
+    }
+
+    private static function issueLocation(): string
+    {
+        return getenv('TRANSCRIPT_ISSUE_LOCATION') ?: 'TABA';
+    }
+
+    /* ── verification snapshot ─────────────────────────────────────────── */
+
+    /**
+     * What the transcript prints, as data: the identity block and every sheet
+     * with its modules and totals, built by the same helpers as the PDF. Stored
+     * when the PDF is issued and shown on the public verification page, so a
+     * verifier can compare the paper with the record line by line.
+     *
+     * @param  array<string,mixed>            $student
+     * @param  array<int,array<string,mixed>> $rows
+     * @return array<string,mixed>
+     */
+    public static function snapshot(array $student, array $rows): array
+    {
+        $sheets = [];
+        foreach (self::groupByLevel($rows) as $list) {
+            $totals = self::levelTotals($list);
+            $info   = self::sheetInfo($list);
+            $sheets[] = [
+                'level'   => html_entity_decode(self::levelLine($info['level'], $info['sems'])),
+                'modules' => array_values(array_map(static fn (array $r): array => self::rowCells($r), $list)),
+                'totals'  => [
+                    'credits'          => (int)$totals['credits'],
+                    'credit_points'    => self::plain((float)$totals['credit_points']),
+                    'weighted_average' => $totals['weighted_average'] !== null
+                        ? number_format((float)$totals['weighted_average'], 2)
+                        : null,
+                    'grade'            => $totals['grade_label'],
+                    'decision'         => $totals['decision'],
+                ],
+            ];
+        }
+
+        return [
+            'student' => [
+                'surname'     => strtoupper(trim((string)($student['lname'] ?? ''))),
+                'other_names' => strtoupper(trim((string)($student['fname'] ?? ''))),
+                'regnumber'   => trim((string)($student['regnumber'] ?? '')),
+                'faculty'     => trim((string)($student['fac_name'] ?? '')) ?: null,
+                'department'  => trim((string)($student['dep_name'] ?? '')) ?: null,
+                'option'      => trim((string)($student['option_name'] ?? '')) ?: null,
+            ],
+            'registrar'    => Signatories::academicRegistrar(),
+            'issued_place' => self::issueLocation(),
+            'sheets'       => $sheets,
+        ];
     }
 
     /* ── level grouping ────────────────────────────────────────────────── */
@@ -606,6 +700,14 @@ table.grid th:nth-child(7) { width: 11.5%; }
 .signoff { margin-top: 16pt; font-size: 9pt; font-weight: bold; }
 .signoff div { padding: 3pt 0; }
 .signoff .issued { margin-top: 4pt; }
+
+/* Sign-off with the verification QR beside it: registrar on the left, the QR
+   on the right edge, both resting on the same baseline. */
+table.signoff { width: 100%; border-collapse: collapse; }
+table.signoff td { border: none; padding: 0; vertical-align: bottom; }
+table.signoff td.sign { width: 50%; }
+table.signoff td.verify { width: 50%; text-align: right; }
+img.verify-qr { width: 20mm; height: 20mm; }
 
 .motto { margin-top: 12pt; text-align: center; font-weight: bold; }
 .none { text-align: center; padding: 20pt 0; }

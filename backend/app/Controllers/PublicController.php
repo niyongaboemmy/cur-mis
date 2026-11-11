@@ -9,6 +9,7 @@ use Core\Response;
 use Core\Database;
 use App\Models\StudentIdModel;
 use App\Helpers\StudentIdCardHelper;
+use App\Services\TranscriptVerificationService;
 
 /**
  * Public, unauthenticated endpoints — anyone holding a printed card (or its QR)
@@ -26,10 +27,17 @@ class PublicController extends BaseController
         $this->db = Database::getInstance();
     }
 
+    /** The `code` query value; anything but a plain string (e.g. `?code[]=`) counts as missing. */
+    private function codeParam(Request $request): string
+    {
+        $raw = $request->query('code');
+        return is_string($raw) ? trim($raw) : '';
+    }
+
     // ── GET /api/public/student-verify?code=<barcode> ────────────────────────
     public function verifyStudent(Request $request, Response $response): never
     {
-        $code = trim((string) ($request->query('code') ?? ''));
+        $code = $this->codeParam($request);
         if ($code === '') {
             $this->error($response, 'Verification code is required.', 422);
         }
@@ -82,7 +90,7 @@ class PublicController extends BaseController
     /** Streams the photo of the student whose active card carries this barcode. */
     public function studentPhoto(Request $request, Response $response): never
     {
-        $code = trim((string) ($request->query('code') ?? ''));
+        $code = $this->codeParam($request);
         if ($code === '') {
             $this->error($response, 'Verification code is required.', 422);
         }
@@ -103,5 +111,40 @@ class PublicController extends BaseController
         header('X-Content-Type-Options: nosniff');
         echo base64_decode($m[2]);
         exit;
+    }
+
+    // ── GET /api/public/transcript-verify?code=<code> ───────────────────────
+    /**
+     * The transcript a printed verification code refers to: who it was issued
+     * to, when, and every sheet as printed. The code is the bearer secret — it
+     * is only on the paper — so nothing is returned without it.
+     */
+    public function verifyTranscript(Request $request, Response $response): never
+    {
+        // A student's results: never kept by browsers or proxies, never indexed.
+        header('Cache-Control: no-store');
+        header('X-Robots-Tag: noindex, nofollow');
+
+        $code = $this->codeParam($request);
+        if ($code === '') {
+            $this->error($response, 'Verification code is required.', 422);
+        }
+
+        $record = TranscriptVerificationService::find($code);
+        if (!$record) {
+            $this->success($response, ['found' => false], 'No transcript matches this code.');
+        }
+
+        $snap = $record['snapshot'];
+        $this->success($response, [
+            'found'         => true,
+            'code'          => $record['code'],
+            'issued_on'     => $record['issued_on'],
+            'issued_place'  => $snap['issued_place'] ?? null,
+            'registrar'     => $snap['registrar'] ?? null,
+            'superseded_on' => $record['superseded_on'],
+            'student'       => $snap['student'] ?? null,
+            'sheets'        => $snap['sheets'] ?? [],
+        ], 'Transcript found.');
     }
 }
