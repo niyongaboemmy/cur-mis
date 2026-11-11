@@ -357,7 +357,7 @@ class AuthController extends BaseController
 
         $errors = ValidationHelper::validate($data, [
             'first_name' => ['required', 'string'],
-            'last_name'  => ['required', 'string'],
+            'last_name'  => ['string'],
             'email'      => ['required', 'email', 'email_domain'],
             'password'   => ['required', 'min:8'],
         ]);

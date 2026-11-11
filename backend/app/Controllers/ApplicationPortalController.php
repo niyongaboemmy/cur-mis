@@ -354,7 +354,7 @@ class ApplicationPortalController extends BaseController
             'department_id'      => 'required|numeric',
             'intake'             => 'required|string|min:3|max:20',
             'first_name'         => 'required|string|min:2|max:100',
-            'last_name'          => 'required|string|min:2|max:100',
+            'last_name'          => 'string|max:100',
             'email'              => 'required|email|email_domain|max:150',
             'phone'              => 'required|string|min:7|max:30',
             'gender'             => 'required|in:M,F,Other',

@@ -9,7 +9,7 @@ import PasswordInput from "@/components/ui/PasswordInput";
 
 const registerSchema = z.object({
   first_name: z.string().min(2, "First name is required"),
-  last_name: z.string().min(2, "Last name is required"),
+  last_name: z.string().refine((v) => v === "" || v.trim().length >= 2, "Last name must be at least 2 characters").optional(),
   email: z
     .string()
     .min(1, "Email is required")
@@ -93,7 +93,7 @@ export default function RegisterForm({ onSuccess, prefill }: RegisterFormProps) 
               {errors.first_name && <p className="error-text">{errors.first_name.message}</p>}
             </div>
             <div>
-              <label htmlFor="last_name" className="label">Last name</label>
+              <label htmlFor="last_name" className="label">Last name <span className="text-ink-400 font-normal">(optional)</span></label>
               <input
                 id="last_name"
                 type="text"
