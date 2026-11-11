@@ -1054,21 +1054,17 @@ class UrubutoPayService
      * The application number is the payer code for both debts an applicant can
      * carry, so this is the fork between them:
      *
-     *   processing fee outstanding → pay it down (the gateway lets the payer
-     *                                name the amount, so this may be a part
-     *                                payment: ApplicationFeeService keeps the
-     *                                ledger and only the LAST instalment
-     *                                submits the application)
-     *   processing fee settled     → it is an admission fee (Registration,
-     *                                CURSU …) and AdmissionBillingService
-     *                                applies it
+     *   processing fee outstanding → pay it down in the application-fee ledger
+     *                                (part payments allowed; only the last
+     *                                instalment submits the application). Any
+     *                                amount above the fee goes to the admission
+     *                                bills, or is held as credit until they exist.
+     *   processing fee settled     → it is an admission fee (Registration, CURSU …)
+     *                                and AdmissionBillingService settles it.
      *
-     * The fork is on the BALANCE, not on `paid_at`: an applicant who sent 100
-     * against a 5,000 fee still owes the application fee, and their next
-     * payment must land there rather than on the admission bills.
-     *
-     * An overpayment is split — the part that clears the fee is taken here and
-     * the surplus spills onto the admission bills when any are open.
+     * The fork is on the BALANCE, not on `paid_at`. Nothing the gateway confirmed
+     * is discarded: whatever no bill can take yet stays on the applicant's credit
+     * ledger (application_credits) and is allocated when the bill is raised.
      *
      * Idempotent on transaction_id either way.
      */
@@ -1084,25 +1080,26 @@ class UrubutoPayService
         $appNumber = (string)($application['application_number'] ?? '');
         $phone     = (string)($application['phone'] ?? '');
 
-        $fees   = new ApplicationFeeService();
-        $before = $fees->summaryFor($appId, $application);
+        $fees    = new ApplicationFeeService();
+        $billing = new AdmissionBillingService();
+        $before  = $fees->summaryFor($appId, $application);
 
-        // Nothing left owing on the processing fee — this is an admission fee.
-        if ($before['fully_paid']) {
-            return (new AdmissionBillingService())->applyGatewayPayment(
-                $application, $txCode, $amount, $currency, $paymentDate, $serviceCode
-            );
+        // A retried callback is never booked again, whichever ledger took it the first time.
+        // This runs before the fully-paid branch: an exact fee payment leaves no credit
+        // behind, so the credit ledger alone would not recognise a retry of it.
+        $alreadyRecorded = $fees->paymentIdForReference($appId, $txCode)
+            ?? $billing->findRecordedReference($appId, $txCode);
+
+        // A settlement recorded before the ledger, or through the claim path, sits only on the
+        // flat transaction_id column. It is still the same transaction.
+        if ($alreadyRecorded === null && $txCode !== ''
+            && trim((string)($application['transaction_id'] ?? '')) === $txCode) {
+            $alreadyRecorded = 0;
         }
-
-        $result = $fees->recordPayment(
-            $application, $txCode, $amount, $currency, $paymentDate, $serviceCode, 'GATEWAY'
-        );
-
-        // Idempotency — the gateway retries its callback.
-        if ($result['status'] === 'duplicate') {
+        if ($alreadyRecorded !== null) {
             return [
                 'status'             => 'duplicate',
-                'payment_id'         => $result['payment_id'],
+                'payment_id'         => $alreadyRecorded,
                 'message'            => 'Payment already recorded',
                 'internal_tx_id'     => $appNumber,
                 'external_tx_id'     => $txCode,
@@ -1110,6 +1107,57 @@ class UrubutoPayService
             ];
         }
 
+        // Nothing left owing on the processing fee — this is an admission fee.
+        if ($before['fully_paid']) {
+            return $billing->applyGatewayPayment(
+                $application, $txCode, $amount, $currency, $paymentDate, $serviceCode
+            );
+        }
+
+        // The processing-fee ledger and the surplus are written in ONE transaction,
+        // so a failure cannot leave the fee booked while its surplus is lost.
+        $outcome = $billing->inTransaction(function () use (
+            $fees, $billing, $application, $txCode, $amount, $currency, $paymentDate, $serviceCode
+        ): array {
+            $result = $fees->recordPayment(
+                $application, $txCode, $amount, $currency, $paymentDate, $serviceCode, 'GATEWAY'
+            );
+
+            if ($result['status'] === 'duplicate') {
+                return ['duplicate' => true, 'result' => $result, 'settled' => null];
+            }
+
+            $settled = null;
+            $surplus = (float)$result['surplus'];
+            if ($surplus > 0.009) {
+                $settled = $billing->settleGatewayPaymentInTx(
+                    $application, $txCode, $surplus, $currency, $paymentDate, $serviceCode
+                );
+
+                // The fee ledger already holds this transaction, so a duplicate here
+                // means the two writes disagree. Roll the whole thing back.
+                if ($settled['duplicate']) {
+                    throw new \RuntimeException('Surplus of transaction ' . $txCode . ' is already recorded; rolling back.');
+                }
+            }
+
+            return ['duplicate' => false, 'result' => $result, 'settled' => $settled];
+        });
+
+        // Idempotency — the gateway retries its callback.
+        if ($outcome['duplicate']) {
+            return [
+                'status'             => 'duplicate',
+                'payment_id'         => $outcome['result']['payment_id'],
+                'message'            => 'Payment already recorded',
+                'internal_tx_id'     => $appNumber,
+                'external_tx_id'     => $txCode,
+                'payer_phone_number' => $phone,
+            ];
+        }
+
+        $result  = $outcome['result'];
+        $settled = $outcome['settled'];
         $summary = $result['summary'];
         $applied = (float)$result['applied'];
 
@@ -1125,6 +1173,7 @@ class UrubutoPayService
                 'transaction_code' => $txCode,
                 'amount'           => $amount,
                 'applied'          => $applied,
+                'surplus'          => $result['surplus'],
                 'service_code'     => $serviceCode,
                 'balance'          => $summary['balance'],
                 'fee_source'       => $summary['quote']['source'],
@@ -1141,23 +1190,10 @@ class UrubutoPayService
             $application, $txCode, $applied, $currency, $autoSubmitted, $summary
         );
 
-        // Overpayment spills onto the admission bills rather than sitting here.
-        if ($result['surplus'] > 0.009) {
-            try {
-                $billing = new AdmissionBillingService();
-                if ($billing->hasOpenBills($appId)) {
-                    $billing->applyGatewayPayment(
-                        $application,
-                        $txCode . '-SPILL',
-                        (float)$result['surplus'],
-                        $currency,
-                        $paymentDate,
-                        $serviceCode
-                    );
-                }
-            } catch (\Throwable $e) {
-                error_log('[UrubutoPay] application-fee surplus spill failed: ' . $e->getMessage());
-            }
+        // The surplus has been committed. Tell the applicant what happened to it:
+        // allocated to a bill, or held as credit until the bill is raised.
+        if ($settled !== null) {
+            $billing->notifyAllocations($application, $settled['allocations'], $settled['summary']);
         }
 
         return [

@@ -7,6 +7,7 @@ namespace App\Services;
 use Core\Database;
 use App\Models\ApplicationInvoiceModel;
 use App\Models\ApplicationInvoicePaymentModel;
+use App\Models\ApplicationCreditModel;
 use App\Models\StudentApplicationModel;
 use App\Models\AdmissionOfferModel;
 use App\Models\FeeStructureModel;
@@ -43,6 +44,7 @@ class AdmissionBillingService
     private Database                       $db;
     private ApplicationInvoiceModel        $invoices;
     private ApplicationInvoicePaymentModel $payments;
+    private ApplicationCreditModel         $credits;
     private StudentApplicationModel        $applications;
     private AdmissionOfferModel            $offers;
     private FeeStructureModel              $structures;
@@ -59,6 +61,7 @@ class AdmissionBillingService
         $this->db           = Database::getInstance();
         $this->invoices     = new ApplicationInvoiceModel();
         $this->payments     = new ApplicationInvoicePaymentModel();
+        $this->credits     = new ApplicationCreditModel();
         $this->applications = new StudentApplicationModel();
         $this->offers       = new AdmissionOfferModel();
         $this->structures   = new FeeStructureModel();
@@ -343,6 +346,11 @@ class AdmissionBillingService
             $this->announceBilled($application, $billed, $summary);
         }
 
+        // Money received before these bills existed is waiting on the credit
+        // ledger. Draw it now, so a bill raised after payment shows as settled.
+        $this->allocateOpenCredits($applicationId);
+        $summary = $this->invoices->summaryFor($applicationId);
+
         return ['billed' => $billed, 'skipped' => $skipped, 'summary' => $summary];
     }
 
@@ -436,6 +444,7 @@ class AdmissionBillingService
             'status'             => (string)($application['status'] ?? ''),
             'bills'              => $bills,
             'payments'           => $this->payments->forApplication($applicationId),
+            'credit'             => $this->credits->summaryFor($applicationId),
             'summary'            => $summary,
             // What bill() would raise — lets the validator see the price (and any
             // missing structure) before committing to it.
@@ -582,14 +591,19 @@ class AdmissionBillingService
     // ─────────────────────────────────────────────────────────────────────────
 
     /**
-     * Apply a confirmed UrubutoPay payment to an applicant's admission bills.
+     * Apply a verified UrubutoPay payment to an applicant's admission bills.
      *
-     * The bill matching the service the payer chose is settled first; anything
-     * left over spills onto the remaining bills oldest-first, so an overpayment
-     * lands on real debt instead of sitting unapplied. Idempotent on the gateway
-     * transaction code.
+     * The payment is written to the credit ledger (application_credits) first,
+     * so the money is on record the moment the gateway confirms it. It is then
+     * allocated to the open bills: the bill for the service the payer chose
+     * first, the rest oldest-first. Anything no bill can take yet stays on the
+     * credit as unapplied and is allocated automatically when the bill is
+     * raised. A verified payment is never refused for want of a bill.
      *
-     * @return array{status:string,payment_id:int|null,message:string,internal_tx_id:string,external_tx_id:string,payer_phone_number:string}
+     * Idempotent on the gateway transaction code: a retried callback returns
+     * 'duplicate' and changes nothing.
+     *
+     * @return array{status:string,payment_id:int|null,message:string,internal_tx_id:string,external_tx_id:string,payer_phone_number:string,applied?:float,held_as_credit?:float}
      */
     public function applyGatewayPayment(
         array  $application,
@@ -597,108 +611,434 @@ class AdmissionBillingService
         float  $amount,
         string $currency,
         string $paidAt,
-        string $serviceCode
+        string $serviceCode,
+        string $source = 'GATEWAY',
+        ?int   $recordedBy = null
     ): array {
         $applicationId = (int)$application['id'];
+        $appNumber     = (string)($application['application_number'] ?? '');
         $phone         = (string)($application['phone'] ?? '');
+        $txCode        = trim($txCode);
 
-        $duplicate = $this->payments->existsForReference($txCode);
-        if ($duplicate) {
-            return [
-                'status'             => 'duplicate',
-                'payment_id'         => (int)$duplicate['id'],
-                'message'            => 'Payment recorded',
-                'internal_tx_id'     => (string)($duplicate['receipt_number'] ?? $txCode),
-                'external_tx_id'     => $txCode,
-                'payer_phone_number' => $phone,
-            ];
+        if ($txCode === '' || $amount <= 0) {
+            return $this->gatewayResult('error', null, 'A transaction reference and a positive amount are required.', $appNumber, $txCode, $phone);
         }
 
-        $open = $this->invoices->openForApplication($applicationId);
-        if (empty($open)) {
-            return [
-                'status'             => 'error',
-                'payment_id'         => null,
-                'message'            => 'No outstanding admission bill for application ' . ($application['application_number'] ?? $applicationId),
-                'internal_tx_id'     => (string)($application['application_number'] ?? ''),
-                'external_tx_id'     => $txCode,
-                'payer_phone_number' => $phone,
-            ];
-        }
-
-        $open = $this->prioritiseByServiceCode($open, $serviceCode);
-
-        $remaining      = $amount;
-        $firstPaymentId = null;
-        $applied        = [];
-        $index          = 0;
-
-        foreach ($open as $bill) {
-            if ($remaining <= 0.009) {
-                break;
-            }
-
-            $gap = round((float)$bill['amount_due'] - (float)$bill['amount_paid'], 2);
-            if ($gap <= 0) {
-                continue;
-            }
-
-            $apply     = min($remaining, $gap);
-            $reference = $txCode . ($index > 0 ? '-' . ($index + 1) : '');
-            $receipt   = $this->generateReceiptNumber();
-
-            $paymentId = (int)$this->payments->create([
-                'application_invoice_id' => (int)$bill['id'],
-                'application_id'         => $applicationId,
-                'amount'                 => $apply,
-                'currency'               => $currency ?: (string)$bill['currency'],
-                'payment_method'         => 'MOBILE_MONEY',
-                'reference_number'       => $reference,
-                'receipt_number'         => $receipt,
-                'service_code'           => $serviceCode !== '' ? $serviceCode : null,
-                'source'                 => 'GATEWAY',
-                'notes'                  => 'UrubutoPay — service: ' . ($serviceCode ?: 'unspecified') . ', tx: ' . $txCode,
-                'paid_at'                => $paidAt,
-            ]);
-
-            $this->invoices->applyPayment((int)$bill['id'], $apply, $txCode, $paidAt);
-
-            $firstPaymentId ??= $paymentId;
-            $applied[]        = [
-                'fee_type'       => (string)$bill['fee_type'],
-                'label'          => (string)($bill['label'] ?: $bill['fee_type']),
-                'amount'         => $apply,
-                'receipt_number' => $receipt,
-            ];
-            $remaining -= $apply;
-            $index++;
-        }
-
-        $summary = $this->invoices->summaryFor($applicationId);
-
-        SystemLogService::log(
-            'CREATE',
-            'ADMISSIONS',
-            'UrubutoPay admission fee: tx=' . $txCode
-                . ', application=' . ($application['application_number'] ?? $applicationId)
-                . ', amount=' . $amount . ' RWF, bills_settled=' . count($applied)
-                . ', balance=' . number_format($summary['balance'], 0) . ' RWF.',
-            $applicationId,
-            'student_application',
-            ['transaction_code' => $txCode, 'amount' => $amount, 'service_code' => $serviceCode, 'applied' => $applied]
+        $settled = $this->inTransaction(
+            fn () => $this->settleGatewayPaymentInTx(
+                $application, $txCode, $amount, $currency, $paidAt, $serviceCode, $source, $recordedBy
+            )
         );
 
-        $this->announcePayment($application, $applied, $amount, $currency, $txCode, $summary);
-
-        if ($summary['fully_paid']) {
-            $this->onFullyPaid($applicationId);
+        if ($settled['duplicate']) {
+            return $this->gatewayResult('duplicate', $settled['payment_id'], 'Payment already recorded', $appNumber, $txCode, $phone);
         }
+
+        // Announcements, the log and enrollment run only after the money is committed.
+        $this->notifyAllocations($application, $settled['allocations'], $settled['summary']);
+
+        $own = $this->ownAllocation($settled['allocations'], (int)$settled['credit_id']);
 
         return [
             'status'             => 'recorded',
-            'payment_id'         => $firstPaymentId,
+            'payment_id'         => $own['first_payment_id'] ?? null,
             'message'            => 'Payment recorded',
-            'internal_tx_id'     => (string)($applied[0]['receipt_number'] ?? $application['application_number'] ?? ''),
+            'internal_tx_id'     => (string)($own['first_receipt'] ?? $appNumber),
+            'external_tx_id'     => $txCode,
+            'payer_phone_number' => $phone,
+            'applied'            => (float)$own['applied'],
+            'held_as_credit'     => (float)$own['unapplied'],
+        ];
+    }
+
+    /**
+     * Record one settlement on the credit ledger and allocate what the open bills
+     * can take. DATABASE WORK ONLY: nothing is announced, logged or enrolled here,
+     * so the caller can run it inside a larger transaction (the application-fee
+     * path does) and call notifyAllocations() after commit.
+     *
+     * Must run inside inTransaction(). Locks the application row first, so two
+     * callbacks, or a callback and a bill being raised, cannot interleave.
+     *
+     * @return array{duplicate:bool,payment_id:int|null,credit_id:int|null,allocations:list<array<string,mixed>>,summary:array}
+     */
+    public function settleGatewayPaymentInTx(
+        array  $application,
+        string $txCode,
+        float  $amount,
+        string $currency,
+        string $paidAt,
+        string $serviceCode,
+        string $source = 'GATEWAY',
+        ?int   $recordedBy = null
+    ): array {
+        $applicationId = (int)$application['id'];
+        $this->lockApplication($applicationId);
+
+        $existing = $this->findRecordedReference($applicationId, $txCode);
+        if ($existing !== null) {
+            return [
+                'duplicate'   => true,
+                'payment_id'  => $existing,
+                'credit_id'   => null,
+                'allocations' => [],
+                'summary'     => $this->invoices->summaryFor($applicationId),
+            ];
+        }
+
+        $creditId = (int)$this->credits->create([
+            'application_id'   => $applicationId,
+            'reference_number' => $txCode,
+            'payer_code'       => (string)($application['application_number'] ?? ''),
+            'service_code'     => $serviceCode !== '' ? $serviceCode : null,
+            'currency'         => $currency ?: 'RWF',
+            'source'           => $source === 'MANUAL' ? 'MANUAL' : 'GATEWAY',
+            'amount_received'  => round($amount, 2),
+            'amount_allocated' => 0.00,
+            'amount_remaining' => round($amount, 2),
+            'status'           => 'open',
+            'received_at'      => $paidAt,
+            'notes'            => $recordedBy ? 'Recorded by user #' . $recordedBy : null,
+            'updated_at'       => date('Y-m-d H:i:s'),
+        ]);
+
+        $allocations = $this->allocateOpenCreditsInTx($applicationId);
+
+        // The new credit may have found no bill to draw on, in which case the
+        // allocator never reached it. Record it explicitly as fully unapplied.
+        if ($this->ownAllocation($allocations, $creditId) === []) {
+            $allocations[] = [
+                'credit_id'       => $creditId,
+                'reference'       => $txCode,
+                'source'          => $source === 'MANUAL' ? 'MANUAL' : 'GATEWAY',
+                'currency'        => $currency ?: 'RWF',
+                'received'        => round($amount, 2),
+                'applied'         => 0.0,
+                'unapplied'       => round($amount, 2),
+                'lines'           => [],
+                'first_payment_id' => null,
+                'first_receipt'    => null,
+            ];
+        }
+
+        return [
+            'duplicate'   => false,
+            'payment_id'  => null,
+            'credit_id'   => $creditId,
+            'allocations' => $allocations,
+            'summary'     => $this->invoices->summaryFor($applicationId),
+        ];
+    }
+
+    /**
+     * Draw every open credit on the application against the open bills, oldest
+     * credit first. Writes application_invoice_payments rows (source and
+     * application_credit_id say where the money came from), reduces each credit's
+     * amount_remaining, and marks it exhausted when nothing is left.
+     *
+     * Must run inside inTransaction() with the application row locked.
+     * A credit can only be spent once: the row is updated in the same transaction
+     * that wrote its allocations, and the application lock serialises callers.
+     *
+     * @return list<array<string,mixed>> one entry per credit that was examined
+     */
+    private function allocateOpenCreditsInTx(int $applicationId): array
+    {
+        $results = [];
+
+        foreach ($this->credits->openForApplication($applicationId) as $credit) {
+            $creditId  = (int)$credit['id'];
+            $received  = round((float)$credit['amount_received'], 2);
+            $remaining = round((float)$credit['amount_remaining'], 2);
+            if ($remaining <= 0.009) {
+                continue;
+            }
+
+            $bills = $this->invoices->openForApplication($applicationId);
+            if (empty($bills)) {
+                // No open bill at all: this credit and any later ones wait.
+                break;
+            }
+
+            $code   = trim((string)($credit['service_code'] ?? ''));
+            $target = $code !== '' ? $this->serviceTarget($code) : null;
+
+            // The payer named a fee type. Until a bill of that type exists on this
+            // application, the money waits: it must not be applied to a different fee
+            // (CURSU money is not Registration money). An unidentifiable code keeps
+            // the old behaviour: matching bills first, then the rest.
+            if ($target !== null && $target['type'] !== '' && !$this->hasBillOfTarget($applicationId, $target)) {
+                continue;
+            }
+
+            $bills = $this->prioritiseByServiceCode($bills, $code);
+
+            $lines           = [];
+            $firstPaymentId  = null;
+            $firstReceipt    = null;
+            $index           = 0;
+
+            foreach ($bills as $bill) {
+                if ($remaining <= 0.009) {
+                    break;
+                }
+
+                $gap = round((float)$bill['amount_due'] - (float)$bill['amount_paid'], 2);
+                if ($gap <= 0) {
+                    continue;
+                }
+
+                $apply     = round(min($remaining, $gap), 2);
+                // Unique per (credit, bill): the credit id is unique, and the
+                // suffix separates several bills drawn from one credit.
+                $reference = $credit['reference_number'] . '-CR' . $creditId . '-B' . (int)$bill['id'];
+                $receipt   = $this->generateReceiptNumber();
+
+                $paymentId = (int)$this->payments->create([
+                    'application_invoice_id' => (int)$bill['id'],
+                    'application_id'         => $applicationId,
+                    'application_credit_id'  => $creditId,
+                    'amount'                 => $apply,
+                    'currency'               => (string)($credit['currency'] ?: $bill['currency']),
+                    'payment_method'         => ($credit['source'] ?? 'GATEWAY') === 'MANUAL' ? 'MANUAL' : 'MOBILE_MONEY',
+                    'reference_number'       => $reference,
+                    'receipt_number'         => $receipt,
+                    'service_code'           => $credit['service_code'] ?: null,
+                    'source'                 => (string)($credit['source'] ?? 'GATEWAY'),
+                    'recorded_by'            => null,
+                    'notes'                  => mb_substr('Allocated from credit — tx: ' . $credit['reference_number'], 0, 255),
+                    'paid_at'                => (string)$credit['received_at'],
+                ]);
+
+                $this->invoices->applyPayment(
+                    (int)$bill['id'],
+                    $apply,
+                    (string)$credit['reference_number'],
+                    (string)$credit['received_at']
+                );
+
+                $firstPaymentId ??= $paymentId;
+                $firstReceipt   ??= $receipt;
+                $lines[] = [
+                    'fee_type'       => (string)$bill['fee_type'],
+                    'label'          => (string)($bill['label'] ?: $bill['fee_type']),
+                    'amount'         => $apply,
+                    'receipt_number' => $receipt,
+                    'bill_id'        => (int)$bill['id'],
+                ];
+
+                $remaining = round($remaining - $apply, 2);
+                $index++;
+            }
+
+            $applied = round(array_sum(array_column($lines, 'amount')), 2);
+
+            if ($applied > 0) {
+                $allocated = round((float)$credit['amount_allocated'] + $applied, 2);
+                $left      = max(0.0, round($received - $allocated, 2));
+
+                $this->credits->update($creditId, [
+                    'amount_allocated' => $allocated,
+                    'amount_remaining' => $left,
+                    'status'           => $left <= 0.009 ? 'exhausted' : 'open',
+                    'updated_at'       => date('Y-m-d H:i:s'),
+                ]);
+            } else {
+                $left = $remaining;
+            }
+
+            $results[] = [
+                'credit_id'        => $creditId,
+                'reference'        => (string)$credit['reference_number'],
+                'source'           => (string)($credit['source'] ?? 'GATEWAY'),
+                'currency'         => (string)($credit['currency'] ?: 'RWF'),
+                'received'         => $received,
+                'applied'          => $applied,
+                'unapplied'        => round($left, 2),
+                'lines'            => $lines,
+                'first_payment_id' => $firstPaymentId,
+                'first_receipt'    => $firstReceipt,
+            ];
+        }
+
+        return $results;
+    }
+
+    /**
+     * Allocate any unapplied credit to the bills that are now open. Called when
+     * bills are raised, so money received before admission is applied the moment
+     * the bill appears. Idempotent: an already-drawn credit has nothing left to give.
+     *
+     * @return list<array<string,mixed>>
+     */
+    public function allocateOpenCredits(int $applicationId): array
+    {
+        $application = $this->applications->find($applicationId);
+        if (!$application) {
+            return [];
+        }
+
+        $allocations = $this->inTransaction(function () use ($applicationId) {
+            $this->lockApplication($applicationId);
+            return $this->allocateOpenCreditsInTx($applicationId);
+        });
+        // Only credits that actually drew money are worth announcing.
+        $allocations = array_values(array_filter($allocations, static fn (array $a): bool => $a['applied'] > 0));
+
+        if (!empty($allocations)) {
+            $this->notifyAllocations($application, $allocations, $this->invoices->summaryFor($applicationId));
+        }
+
+        return $allocations;
+    }
+
+    /**
+     * Everything that happens AFTER money has been committed: the applicant and
+     * desk are told, the log is written, and enrollment runs if the bills are now
+     * all settled. Never call this from inside a transaction.
+     *
+     * @param list<array<string,mixed>> $allocations
+     */
+    public function notifyAllocations(array $application, array $allocations, array $summary): void
+    {
+        $applicationId = (int)$application['id'];
+        $appNumber     = (string)($application['application_number'] ?? $applicationId);
+        $appliedTotal  = 0.0;
+
+        foreach ($allocations as $a) {
+            $applied = (float)$a['applied'];
+            $appliedTotal += $applied;
+
+            if ($applied > 0) {
+                $this->announcePayment(
+                    $application,
+                    $a['lines'],
+                    $applied,
+                    (string)$a['currency'],
+                    (string)$a['reference'],
+                    $summary
+                );
+            }
+
+            SystemLogService::log(
+                'CREATE',
+                'ADMISSIONS',
+                ($a['source'] === 'MANUAL' ? 'Confirmed' : 'UrubutoPay') . ' admission fee: tx=' . $a['reference']
+                    . ', application=' . $appNumber
+                    . ', received=' . number_format((float)$a['received'], 0) . ' RWF'
+                    . ', applied=' . number_format($applied, 0) . ' RWF'
+                    . ', held as credit=' . number_format((float)$a['unapplied'], 0) . ' RWF'
+                    . ', balance=' . number_format($summary['balance'], 0) . ' RWF.',
+                $applicationId,
+                'student_application',
+                [
+                    'transaction_code' => $a['reference'],
+                    'credit_id'        => $a['credit_id'],
+                    'received'         => $a['received'],
+                    'applied'          => $applied,
+                    'unapplied'        => $a['unapplied'],
+                    'lines'            => $a['lines'],
+                ]
+            );
+        }
+
+        if ($appliedTotal > 0.009 && $summary['fully_paid']) {
+            $this->onFullyPaid($applicationId);
+        }
+    }
+
+    /**
+     * Run $work in one transaction. Joins an enclosing transaction when one is
+     * already open, because PDO does not nest and the callers of this service
+     * include code that is already inside a transaction.
+     */
+    public function inTransaction(callable $work): mixed
+    {
+        if ($this->db->getPdo()->inTransaction()) {
+            return $work();
+        }
+
+        return $this->db->transaction(static fn () => $work());
+    }
+
+    /**
+     * What a service code means for allocation: the fee type it pays for and every code
+     * that identifies it. type is '' when the catalogue does not know the code.
+     *
+     * @return array{type:string,codes:list<string>}
+     */
+    private function serviceTarget(string $code): array
+    {
+        $resolved = $this->catalogue->findByCode($code);
+        $type     = $resolved ? strtoupper(trim((string)($resolved['fee_structure_type'] ?? ''))) : '';
+        $live     = $resolved ? (string)$resolved['service_code'] : $code;
+
+        return ['type' => $type, 'codes' => array_values(array_unique([$code, $live]))];
+    }
+
+    /** Does this application have a bill (open or settled) that the payer's service pays for? */
+    private function hasBillOfTarget(int $applicationId, array $target): bool
+    {
+        foreach ($this->invoices->forApplication($applicationId) as $bill) {
+            if (in_array((string)($bill['service_code'] ?? ''), $target['codes'], true)) {
+                return true;
+            }
+            if ($target['type'] !== '' && strtoupper((string)$bill['fee_type']) === $target['type']) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** Serialises every money write on one application. */
+    private function lockApplication(int $applicationId): void
+    {
+        $this->db->fetchOne(
+            'SELECT id FROM `student_applications` WHERE id = ? FOR UPDATE',
+            [$applicationId]
+        );
+    }
+
+    /**
+     * Has this gateway transaction already been recorded? Checked against the
+     * credit ledger first, then the bill payments for transactions recorded before
+     * the credit ledger existed.
+     *
+     * @return int|null the existing row's id, or null when the transaction is new
+     */
+    public function findRecordedReference(int $applicationId, string $txCode): ?int
+    {
+        $payment = $this->payments->existsForReference($txCode);
+        if ($payment) {
+            return (int)$payment['id'];
+        }
+
+        $credit = $this->credits->findByReference($applicationId, $txCode);
+
+        return $credit ? (int)$credit['id'] : null;
+    }
+
+    /** The allocation entry for one credit, or [] when it drew nothing. */
+    private function ownAllocation(array $allocations, int $creditId): array
+    {
+        foreach ($allocations as $a) {
+            if ((int)$a['credit_id'] === $creditId) {
+                return $a;
+            }
+        }
+
+        return [];
+    }
+
+    /** @return array{status:string,payment_id:int|null,message:string,internal_tx_id:string,external_tx_id:string,payer_phone_number:string} */
+    private function gatewayResult(string $status, ?int $paymentId, string $message, string $appNumber, string $txCode, string $phone): array
+    {
+        return [
+            'status'             => $status,
+            'payment_id'         => $paymentId,
+            'message'            => $message,
+            'internal_tx_id'     => $appNumber,
             'external_tx_id'     => $txCode,
             'payer_phone_number' => $phone,
         ];
