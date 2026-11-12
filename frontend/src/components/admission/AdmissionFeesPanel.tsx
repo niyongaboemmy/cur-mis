@@ -520,16 +520,6 @@ export default function AdmissionFeesPanel({
                   )}
 
 
-                  {/* Confirm Offline Button (Finance Only) */}
-                  {isValidator && canManage && (
-                    <button
-                      className="btn-secondary"
-                      onClick={() => setConfirming(bill)}
-                      title="Record a bank transfer or cash payment already received"
-                    >
-                      <ShieldCheck className="w-4 h-4" /> Confirm offline
-                    </button>
-                  )}
                 </div>
               )}
             </div>
