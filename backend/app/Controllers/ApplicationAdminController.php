@@ -529,6 +529,17 @@ class ApplicationAdminController extends BaseController
         if ($deptId    > 0) { $conds[] = 'sa.department_id = ?'; $bind[] = $deptId; }
         if ($optionId  > 0) { $conds[] = 'sa.program_id = ?';    $bind[] = $optionId; }
         if ($campusId  > 0) { $conds[] = 'sa.campus_id = ?';     $bind[] = $campusId; }
+        // Campus-scoped user: only their campuses, as in the applications list
+        // (a picked campus outside the set yields nothing).
+        $scope = $this->resolveCampusScope((array) $request->param('_auth_user'));
+        if ($scope !== null) {
+            if ($scope === []) {
+                $conds[] = '1 = 0';
+            } else {
+                $conds[] = 'sa.campus_id IN (' . implode(',', array_fill(0, count($scope), '?')) . ')';
+                $bind    = array_merge($bind, $scope);
+            }
+        }
         if ($levelId   > 0) { $conds[] = 'sa.level_id = ?';      $bind[] = $levelId; }
         if ($mode !== '')   { $conds[] = 'sa.mode_of_study = ?'; $bind[] = $mode; }
 
@@ -1493,6 +1504,18 @@ class ApplicationAdminController extends BaseController
             'submitted_to'  => $request->query('submitted_to')  ?? '',
         ];
         $filters = array_filter($filters, fn($v) => $v !== '');
+
+        // Same campus scope as the list it exports.
+        $scope = $this->resolveCampusScope((array) $request->param('_auth_user'));
+        if ($scope !== null) {
+            if (!empty($filters['campus_id'])) {
+                $requested = (int)$filters['campus_id'];
+                $filters['campus_scope_ids'] = in_array($requested, $scope, true) ? [$requested] : [];
+                unset($filters['campus_id']);
+            } else {
+                $filters['campus_scope_ids'] = $scope;
+            }
+        }
 
         // Pull every matching row (cap at 5000 to avoid runaway exports).
         $result = $this->appModel->paginateFiltered(1, 5000, $filters);

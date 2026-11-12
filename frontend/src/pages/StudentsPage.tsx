@@ -19,13 +19,12 @@ import {
   Columns3,
   Download,
   Upload,
+  UserPlus,
   FileText,
   Trash2,
 } from "lucide-react";
 import {
   studentService,
-  combinedCampusIds,
-  fetchCombinedStats,
   type StudentStats,
   type StudentListParams,
   type FacetOption,
@@ -45,6 +44,7 @@ import { displayDistrict } from "@/data/rwandaLocations";
 import { usePermission } from "@/utils/permissions";
 import { PERMISSIONS } from "@/constants/permissions";
 import BulkUploadModal from "@/components/admin/BulkUploadModal";
+import AddStudentModal from "@/components/students/AddStudentModal";
 import DocumentCompletionBadge, {
   type DocumentStatus,
 } from "@/components/admin/DocumentCompletionBadge";
@@ -107,21 +107,17 @@ export default function StudentsPage() {
   // Global academic year (topnav selector). Empty string = all years.
   const selectedYear = useSystemStore((s) => s.selectedYearLabel);
   const selectedCampus = useCampusFilterStore((s) => s.selectedCampusId);
-  const isCombined = useCampusFilterStore((s) => s.isCombined);
   const selectedCategory = useCategoryFilterStore((s) => s.selectedCategory);
 
   // Shared stats — refetched when the global year / campus / category
   // change so every metric (counts, charts, breakdowns) re-scopes.
-  // "All my campuses" adds up one request per campus in the browser.
   const statsQ = useQuery({
-    queryKey: ["student-stats", selectedYear || "all", selectedCampus, isCombined, selectedCategory ?? "all"],
+    queryKey: ["student-stats", selectedYear || "all", selectedCampus, selectedCategory ?? "all"],
     queryFn: () =>
-      isCombined
-        ? fetchCombinedStats(combinedCampusIds(), { acc_year: selectedYear || undefined })
-        : studentService.stats({ acc_year: selectedYear || undefined }).then((r) => r.data),
+      studentService.stats({ acc_year: selectedYear || undefined }),
     staleTime: 60_000,
   });
-  const stats: StudentStats | null = statsQ.data ?? null;
+  const stats: StudentStats | null = statsQ.data?.data ?? null;
 
   return (
     <div className="max-w-none mx-auto space-y-5">
@@ -181,18 +177,18 @@ export function ActiveTab({
 }) {
   const s = stats;
 
-  // Fetch cumulative stats (all years) for the main number
-  const campusScopeKey = useCampusFilterStore((s) => (s.isCombined ? "combined" : s.selectedCampusId ?? "all"));
+  // Fetch cumulative stats (all years) for the main number. Keyed on the
+  // top-bar campus and category, which studentService.stats sends: without
+  // them a campus switch kept showing the previous campus's numbers.
+  const selectedCampus = useCampusFilterStore((state) => state.selectedCampusId);
+  const selectedCategory = useCategoryFilterStore((state) => state.selectedCategory);
   const allYearsStatsQ = useQuery({
-    queryKey: ["student-stats-all-years", campusScopeKey],
-    queryFn: () =>
-      useCampusFilterStore.getState().isCombined
-        ? fetchCombinedStats(combinedCampusIds())
-        : studentService.stats({ acc_year: undefined }).then((r) => r.data),
+    queryKey: ["student-stats-all-years", selectedCampus, selectedCategory ?? "all"],
+    queryFn: () => studentService.stats({ acc_year: undefined }),
     staleTime: 60_000,
   });
 
-  const cumulativeStats = allYearsStatsQ.data ?? null;
+  const cumulativeStats = allYearsStatsQ.data?.data ?? null;
   const cumulativeTotal = cumulativeStats?.active ?? 0;
 
   // Use cumulative stats for all metrics
@@ -626,6 +622,9 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
   // Admin, Registrar, and Super Admin can delete students
   const canDeleteStudents = !!(user?.role_name && ['Admin', 'registrar', 'superadmin'].includes(user.role_name));
 
+  // Adding students is limited to Admin, registrar and superadmin (same group as delete).
+  const canAddStudent = canDeleteStudents;
+
   // Inline district edit saves through POST /students/:id, which needs MANAGE_STUDENTS.
   const canEditDistrict = usePermission(PERMISSIONS.MANAGE_STUDENTS);
 
@@ -906,6 +905,7 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
   const [bulkCampusId, setBulkCampusId] = useState<string>("");
   const [exportOpen, setExportOpen] = useState(false);
   const [bulkUploadOpen, setBulkUploadOpen] = useState(false);
+  const [addStudentOpen, setAddStudentOpen] = useState(false);
 
   const handleBulkUpdate = async () => {
     if (!bulkCampusId || selectedIds.size === 0) return;
@@ -1023,6 +1023,16 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
             {activeFilterCount > 0 && (
               <button onClick={clearAll} className="btn-secondary btn-sm">
                 <X className="w-3 h-3" /> Clear filters
+              </button>
+            )}
+            {canAddStudent && (
+              <button
+                type="button"
+                onClick={() => setAddStudentOpen(true)}
+                className="btn-primary btn-sm flex items-center gap-1.5"
+                title="Add a student who already has a registration number"
+              >
+                <UserPlus className="w-3.5 h-3.5" /> Add Student who already have a registration number
               </button>
             )}
             <button
@@ -1465,6 +1475,17 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
             return rest as Record<string, string | number | undefined>;
           })()
         }
+      />
+
+      <AddStudentModal
+        open={addStudentOpen && canAddStudent}
+        onClose={() => {
+          setAddStudentOpen(false);
+          // The form saves on the legacy site, so refresh the list and counts when it closes.
+          qc.invalidateQueries({ queryKey: ["students"] });
+          qc.invalidateQueries({ queryKey: ["student-stats"] });
+          qc.invalidateQueries({ queryKey: ["student-stats-all-years"] });
+        }}
       />
 
       <BulkUploadModal

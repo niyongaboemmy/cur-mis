@@ -16,10 +16,11 @@ import { usePermission } from '@/utils/permissions'
  * Auto-select rules:
  *   • exactly 1 assigned campus → it's picked + the pill is rendered as
  *     a read-only lock-icon pill (no dropdown, can't be cleared).
- *   • scope-locked + multiple    → dropdown limited to the user's set,
- *     first one auto-selected, no "All campuses" escape hatch.
+ *   • scope-locked + multiple    → "All my campuses" by default, with a
+ *     dropdown limited to the user's set to narrow to one. The server keeps
+ *     "all" inside the set.
  *   • free / admin               → full catalog or assignments dropdown;
- *     first assignment is the default landing pick instead of "All".
+ *     "All campuses" by default.
  *
  * Lock state is derived from `user.assigned_campuses` synchronously so the
  * pill renders correctly on the very first paint — no flash of "nothing"
@@ -27,7 +28,7 @@ import { usePermission } from '@/utils/permissions'
  */
 export default function CampusFilterSwitcher() {
   const { user } = useAuthStore()
-  const { selectedCampusId, isCombined, setSelectedCampusId, setCombined, syncFromUser } =
+  const { selectedCampusId, setSelectedCampusId, syncFromUser } =
     useCampusFilterStore()
   const queryClient = useQueryClient()
   const [open, setOpen] = useState(false)
@@ -100,20 +101,13 @@ export default function CampusFilterSwitcher() {
   // No campuses anywhere → nothing meaningful to render.
   if (my.length === 0) return null
 
-  // Effective selection — prefer the persisted store pick, but fall back
-  // to the user's first assignment so the FIRST render already shows a
-  // sensible default. `syncFromUser` will persist this on the next tick.
-  //
-  // For users with zero assignments (admins with full catalog access),
-  // we deliberately do NOT fall back to the first catalog entry — the
-  // correct default for them is `null` = "All campuses".
+  // Effective selection — the persisted store pick. A single-campus user
+  // falls back to their one campus so the FIRST render already shows it
+  // (`syncFromUser` persists it on the next tick); everyone else defaults
+  // to `null` = all campuses.
   const storeSelected     = my.find((c: any) => Number(c.id) === selectedCampusId) ?? null
-  const fallbackSelected  = assignments[0] ?? null
-  // Scope-locked users with several campuses and no single pick are on the
-  // combined view ("All my campuses"): every assigned campus at once, so
-  // don't fall back to the first campus for them.
-  const isCombinedLocked  = isScopeLocked && !isLockedToOne && isCombined
-  const selected          = isCombinedLocked ? null : (storeSelected ?? fallbackSelected)
+  const fallbackSelected  = isLockedToOne ? (assignments[0] ?? null) : null
+  const selected          = storeSelected ?? fallbackSelected
 
   // ── Locked single-campus mode ───────────────────────────────────────
   // Exactly one assignment → render a read-only pill with a lock icon.
@@ -132,25 +126,14 @@ export default function CampusFilterSwitcher() {
     )
   }
 
-  const label = selected
-    ? selected.name
-    : isScopeLocked
-      ? 'All my campuses'
-      : hasManageUsers
-        ? 'All campuses'
-        : 'All my campuses'
+  // "All my campuses" only where the server really limits "all" to the
+  // user's set (scope-locked roles); otherwise "all" means every campus.
+  const allLabel = isScopeLocked ? 'All my campuses' : 'All campuses'
+  const label = selected ? selected.name : allLabel
 
   /** Refetch every page that reads campus-aware data so the UI flips
    *  immediately. We invalidate top-level service prefixes rather than
    *  naming individual queries, so future pages benefit too. */
-  const combineAll = () => {
-    setCombined()
-    setOpen(false)
-    queryClient.invalidateQueries({ queryKey: ['students'] })
-    queryClient.invalidateQueries({ queryKey: ['student-stats'] })
-    queryClient.invalidateQueries({ queryKey: ['student-stats-all-years'] })
-  }
-
   const setScope = (id: number | null) => {
     setSelectedCampusId(id)
     setOpen(false)
@@ -180,25 +163,21 @@ export default function CampusFilterSwitcher() {
             Scope every page to
           </p>
 
-          {/* Scope-locked users can pick any of their campuses but cannot
-              opt out into "all campuses". Hide the All option for them. */}
-          {/* Scope-locked users with several campuses get the combined
-              "All my campuses" view: only their assigned campuses, together. */}
-          {(
-            <button
-              type="button"
-              onClick={() => (isScopeLocked ? combineAll() : setScope(null))}
-              className={
-                'w-full flex items-center justify-between px-3 py-2 text-[12.5px] transition-colors ' +
-                ((isScopeLocked ? isCombinedLocked : selectedCampusId == null)
-                  ? 'bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-200 font-semibold'
-                  : 'text-ink-700 dark:text-ink-200 hover:bg-ink-50 dark:hover:bg-ink-800')
-              }
-            >
-              <span>{hasManageUsers ? 'All campuses' : 'All my campuses'}</span>
-              {selectedCampusId == null && <Check className="w-3.5 h-3.5" />}
-            </button>
-          )}
+          {/* For scope-locked users "All" covers only their own campuses —
+              the server limits it to their set. */}
+          <button
+            type="button"
+            onClick={() => setScope(null)}
+            className={
+              'w-full flex items-center justify-between px-3 py-2 text-[12.5px] transition-colors ' +
+              (selectedCampusId == null
+                ? 'bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-200 font-semibold'
+                : 'text-ink-700 dark:text-ink-200 hover:bg-ink-50 dark:hover:bg-ink-800')
+            }
+          >
+            <span>{allLabel}</span>
+            {selectedCampusId == null && <Check className="w-3.5 h-3.5" />}
+          </button>
 
           <div className="max-h-72 overflow-y-auto">
             {my.map((c: any) => {

@@ -12,6 +12,12 @@
     <!-- Google tag (gtag.js) -->
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-EL5X4M8YFK"></script>
     <script>
+      // Verification pages (/verify/transcript, /verify/student) carry their
+      // secret code in the address. Analytics records full addresses, so it is
+      // switched off on those pages — the code must never reach Google.
+      if (location.pathname.indexOf('/verify/') !== -1) {
+        window['ga-disable-G-EL5X4M8YFK'] = true;
+      }
       window.dataLayer = window.dataLayer || [];
       function gtag(){dataLayer.push(arguments);}
       gtag('js', new Date());

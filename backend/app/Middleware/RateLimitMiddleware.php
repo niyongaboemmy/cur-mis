@@ -18,15 +18,22 @@ use Core\Response;
  *   $router->post('/api/auth/login', [AuthController::class, 'login'], [RateLimitMiddleware::class]);
  *
  * Limits: 60 requests per minute by default (configurable via constructor or env).
+ *
+ * Routes given a `$bucket` count separately from the shared default bucket the
+ * login / OTP routes use — e.g. public verification checks, which must not eat
+ * the login allowance of everyone behind the same campus IP:
+ *   $router->get('/api/public/x', [...], [new RateLimitMiddleware(60, 60, 'public-x')]);
  */
 class RateLimitMiddleware
 {
     private int $maxRequests;
     private int $windowSeconds;
     private string $storageDir;
+    private string $bucket;
 
-    public function __construct(int $maxRequests = 60, int $windowSeconds = 60)
+    public function __construct(int $maxRequests = 60, int $windowSeconds = 60, string $bucket = '')
     {
+        $this->bucket        = (string)preg_replace('/[^a-zA-Z0-9_\-]/', '_', $bucket);
         $this->maxRequests   = (int)($_ENV['RATE_LIMIT_MAX']    ?? $maxRequests);
         $this->windowSeconds = (int)($_ENV['RATE_LIMIT_WINDOW'] ?? $windowSeconds);
         $appNameSlug        = preg_replace('/[^A-Za-z0-9_-]/', '_', strtolower($_ENV['APP_NAME'] ?? 'app'));
@@ -41,7 +48,9 @@ class RateLimitMiddleware
     {
         $ip  = $request->ip();
         $key = preg_replace('/[^a-zA-Z0-9_\-]/', '_', $ip);
-        $file = "{$this->storageDir}/{$key}.json";
+        $file = $this->bucket === ''
+            ? "{$this->storageDir}/{$key}.json"
+            : "{$this->storageDir}/{$this->bucket}__{$key}.json";
 
         $now    = time();
         $window = $now - $this->windowSeconds;

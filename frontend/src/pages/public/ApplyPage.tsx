@@ -69,7 +69,7 @@ const schema = z.object({
   }),
   // Personal — step 1
   first_name:           z.string().min(2, "Required"),
-  last_name:            z.string().min(2, "Required"),
+  last_name:            z.string().refine((v) => v === "" || v.trim().length >= 2, "Must be at least 2 characters").optional(),
   father:               z.string().min(2, "Required"),
   mother:               z.string().min(2, "Required"),
   gender:               z.enum(["M", "F", "Other"]),
@@ -1360,7 +1360,7 @@ function PersonalInfoStep({
             <Field label="First Name *" error={errors.first_name?.message}>
               <input className="input" placeholder="John" {...form.register("first_name")} />
             </Field>
-            <Field label="Last Name *" error={errors.last_name?.message}>
+            <Field label="Last Name" error={errors.last_name?.message}>
               <input className="input" placeholder="Doe" {...form.register("last_name")} />
             </Field>
             <Field label="Gender *" error={errors.gender?.message}>
@@ -2156,7 +2156,7 @@ function PaymentStep({
           <h3 className="text-[14px] font-semibold">Application Checklist</h3>
         </div>
         <ul className="text-[13px] text-ink-700 dark:text-ink-200 list-disc pl-6 space-y-1">
-          <ChecklistItem ok={!!v.first_name && !!v.last_name && !!v.email && !!v.phone}>All personal information provided</ChecklistItem>
+          <ChecklistItem ok={!!v.first_name && !!v.email && !!v.phone}>All personal information provided</ChecklistItem>
           <ChecklistItem ok={!!v.prev_school && !!v.combination && !!v.a2_grades}>Academic background filled</ChecklistItem>
           <ChecklistItem ok={!!v.program_id && !!v.campus_id && !!v.mode_of_study && !!v.level_id}>Program selection made</ChecklistItem>
           <ChecklistItem ok={paid}>Application fee paid (Urubuto Pay)</ChecklistItem>

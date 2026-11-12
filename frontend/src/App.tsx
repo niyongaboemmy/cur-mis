@@ -50,15 +50,9 @@ import PayrollRunDetailPage from "@/pages/hr/PayrollRunDetailPage";
 import PayrollSettingsPage from "@/pages/hr/PayrollSettingsPage";
 import EmployeePayrollProfilePage from "@/pages/hr/EmployeePayrollProfilePage";
 import PayrollPhpPage from "@/pages/hr/PayrollPhpPage";
-import PayrollDataQualityPage from "@/pages/hr/PayrollDataQualityPage";
-import PayrollRunsPage from "@/pages/hr/PayrollRunsPage";
-import PayrollRunDetailPage from "@/pages/hr/PayrollRunDetailPage";
-import PayrollSettingsPage from "@/pages/hr/PayrollSettingsPage";
-import EmployeePayrollProfilePage from "@/pages/hr/EmployeePayrollProfilePage";
 import PartTimePage from "@/pages/hr/PartTimePage";
 import LeavePhpPage from "@/pages/hr/LeavePhpPage";
 import MyPayslipsPhpPage from "@/pages/hr/MyPayslipsPhpPage";
-import PartTimePage from "@/pages/hr/PartTimePage";
 import LeaveRequestsPhpPage from "@/pages/hr/LeaveRequestsPhpPage";
 import ContractManagementPage from "@/pages/hr/ContractManagementPage";
 import HrMonitoringDashboard from "@/pages/hr/HrMonitoringDashboard";
@@ -124,6 +118,7 @@ import AnnouncementsPage from "@/pages/announcements/AnnouncementsPage";
 import ForumsPage from "@/pages/forums/ForumsPage";
 import ForumThreadPage from "@/pages/forums/ForumThreadPage";
 import VerifyStudentPage from "@/pages/public/VerifyStudentPage";
+import VerifyTranscriptPage from "@/pages/public/VerifyTranscriptPage";
 // Help Centre — end-user documentation. Deliberately ungated: every role
 // needs to be able to read every guide, including one written for another role.
 import HelpCenterPage from "@/pages/help/HelpCenterPage";
@@ -213,6 +208,7 @@ function App() {
           <Route path="/apply/masters" element={<ApplyPage presetCategory="masters" />} />
           <Route path="/apply/track" element={<TrackApplicationPage />} />
           <Route path="/verify/student" element={<VerifyStudentPage />} />
+          <Route path="/verify/transcript" element={<VerifyTranscriptPage />} />
           <Route path="/services" element={<ServiceCatalogPage />} />
           <Route path="/services/track" element={<TrackServiceRequestPage />} />
           <Route path="/services/:slug" element={<ServiceDetailPage />} />
@@ -453,13 +449,6 @@ function App() {
                 <Route path="/hr/part-time" element={<PartTimePage />} />
                 <Route path="/hr/payments" element={<PaymentsPage />} />
                 <Route path="/hr/payroll-system" element={<PayrollPhpPage />} />
-                <Route path="/hr/payroll-data-quality" element={<PayrollDataQualityPage />} />
-                <Route path="/hr/payroll-runs" element={<PayrollRunsPage />} />
-                <Route path="/hr/payroll-runs/:id" element={<PayrollRunDetailPage />} />
-                <Route path="/hr/payroll-settings" element={<PayrollSettingsPage />} />
-                <Route path="/hr/payroll-profile" element={<EmployeePayrollProfilePage />} />
-                <Route path="/hr/payroll-profile/:employeeId" element={<EmployeePayrollProfilePage />} />
-                <Route path="/hr/part-time" element={<PartTimePage />} />
               </Route>
 
               {/* ── Leave management — any HR viewer OR leave view/approve role ── */}

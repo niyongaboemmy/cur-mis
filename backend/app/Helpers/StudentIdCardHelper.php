@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace App\Helpers;
 
-use chillerlan\QRCode\QRCode;
-use chillerlan\QRCode\QROptions;
 
 /**
  * Renders a printable student ID card (front + back) as HTML / PDF.
@@ -600,33 +598,16 @@ BACKHTML;
     }
 
     /**
-     * Render the verification QR as a self-contained data URI.
-     *
-     * Constant names matter here and are version-specific: chillerlan/php-qrcode
-     * v4 (what composer.lock pins, 4.4.2) puts the output modes on QRCode as
-     * OUTPUT_IMAGE_PNG / OUTPUT_MARKUP_SVG and base64-encodes via `imageBase64`.
-     * QROutputInterface::GDIMAGE_PNG and `outputBase64` are the v5 spellings —
-     * referencing them on v4 raises an Error, which the catch below turned into
-     * a blank grey box, so every card printed with an empty QR panel and no
-     * complaint. Log the failure rather than swallowing it, so the next
-     * breakage is visible instead of shipping on thousands of ID cards.
+     * Render the verification QR as a self-contained image ({@see QrImage}); a
+     * grey box when rendering failed (the failure is logged there).
      */
     private static function qrTag(string $content, int $sizeMm): string
     {
-        try {
-            $opts = new QROptions([
-                'outputType'  => extension_loaded('gd')
-                    ? QRCode::OUTPUT_IMAGE_PNG
-                    : QRCode::OUTPUT_MARKUP_SVG,
-                'imageBase64' => true,
-                'scale'       => 5,
-                'eccLevel'    => QRCode::ECC_M,
-            ]);
-            return '<img src="' . (new QRCode($opts))->render($content) . '" style="width:' . $sizeMm . 'mm;height:' . $sizeMm . 'mm;" />';
-        } catch (\Throwable $e) {
-            error_log('[StudentIdCardHelper] QR render failed: ' . $e->getMessage());
+        $uri = QrImage::dataUri($content);
+        if ($uri === null) {
             return '<div style="width:' . $sizeMm . 'mm;height:' . $sizeMm . 'mm;border:1px solid #bbb;"></div>';
         }
+        return '<img src="' . $uri . '" style="width:' . $sizeMm . 'mm;height:' . $sizeMm . 'mm;" />';
     }
 
     private static function fmt(mixed $date): string
