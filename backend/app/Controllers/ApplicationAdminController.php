@@ -1457,8 +1457,18 @@ class ApplicationAdminController extends BaseController
             $scopeParams
         )['cnt'] ?? 0);
 
+        // Enrolled as the list's "Enrolled" filter counts it (see
+        // StudentApplicationModel::ENROLLED_QUEUE_SQL). Same scope and range
+        // as the other tiles, so the tile matches the rows the filter shows.
+        $enrolledQueueCount = (int)($db->fetchOne(
+            "SELECT COUNT(*) AS cnt FROM student_applications sa
+             WHERE " . StudentApplicationModel::ENROLLED_QUEUE_SQL . " {$filterWhere}",
+            $filterParams
+        )['cnt'] ?? 0);
+
         $this->success($response, [
             'by_status' => $statusCounts,
+            'enrolled_queue_count' => $enrolledQueueCount,
             'by_intake' => $intakeCounts,
             'by_dept'   => $deptCounts,
             'by_gender' => $genderCounts,
