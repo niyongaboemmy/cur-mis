@@ -893,6 +893,14 @@ export const studentService = {
   remove: (id: number | string) =>
     api.delete<void>(`/api/students/${id}`),
 
+  deleteCheck: (id: number | string) =>
+    api.get<{
+      student_id: number
+      regnumber: string
+      can_delete: boolean
+      blockers: { marks: number; paid_payments: number; paid_invoices: number }
+    }>(`/api/students/${id}/delete-check`),
+
   listDocuments: (id: number | string, signal?: AbortSignal) =>
     api.get<StudentDocumentsResponse>(
       `/api/students/${id}/documents`, {}, signal,

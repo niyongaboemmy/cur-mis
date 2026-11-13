@@ -1282,9 +1282,61 @@ class StudentController extends BaseController
     }
 
     /**
+     * Counts the records that block a permanent delete of a student.
+     *
+     * Marks live in `module_marks` (keyed by regnumber). Money lives in
+     * `fee_payments` (confirmed rows) and `fee_invoices` (paid or part-paid),
+     * both keyed by regnumber. Unpaid invoices and pending/rejected payments
+     * do not block: they are removed with the student.
+     *
+     * @return array{marks:int, paid_payments:int, paid_invoices:int}
+     */
+    private function deleteBlockers(string $regnumber): array
+    {
+        if ($regnumber === '') {
+            return ['marks' => 0, 'paid_payments' => 0, 'paid_invoices' => 0];
+        }
+
+        $count = fn(string $sql) => (int)($this->db->fetchOne($sql, [$regnumber])['cnt'] ?? 0);
+
+        return [
+            'marks'         => $count("SELECT COUNT(*) AS cnt FROM `module_marks` WHERE student_regnumber = ?"),
+            'paid_payments' => $count("SELECT COUNT(*) AS cnt FROM `fee_payments` WHERE student_id = ? AND status = 'confirmed' AND amount > 0"),
+            'paid_invoices' => $count("SELECT COUNT(*) AS cnt FROM `fee_invoices` WHERE student_id = ? AND status IN ('paid','partial')"),
+        ];
+    }
+
+    /**
+     * GET /api/students/:id/delete-check
+     * Read-only. Tells the UI whether the student can be permanently deleted
+     * and, if not, how many marks / paid payments / paid invoices block it.
+     */
+    public function deleteCheck(Request $request, Response $response): never
+    {
+        $id      = (int)$request->param('id');
+        $student = $this->studentModel->find($id);
+
+        if (!$student) {
+            $this->error($response, 'Student not found', 404);
+        }
+
+        $blockers = $this->deleteBlockers((string)($student['regnumber'] ?? ''));
+        $canDelete = array_sum($blockers) === 0;
+
+        $this->success($response, [
+            'student_id' => $id,
+            'regnumber'  => (string)($student['regnumber'] ?? ''),
+            'can_delete' => $canDelete,
+            'blockers'   => $blockers,
+        ]);
+    }
+
+    /**
      * DELETE /api/students/:id
-     * Permanently delete a student from all tables if they have no marks or paid fees.
-     * Only allowed for admin and registrar roles.
+     * Permanently delete a student and their unpaid/unconfirmed finance rows.
+     * Refused (422) if the student has any marks or any paid money.
+     * Runs in a transaction: if a remaining foreign key still points at the
+     * student, everything is rolled back and nothing is deleted.
      */
     public function delete(Request $request, Response $response): never
     {
@@ -1295,33 +1347,42 @@ class StudentController extends BaseController
             $this->error($response, 'Student not found', 404);
         }
 
-        // Check for marks
-        $marksCount = $this->db->fetchOne(
-            "SELECT COUNT(*) AS cnt FROM `student_marks` WHERE student_id = ?",
-            [$id]
-        );
-        if (($marksCount['cnt'] ?? 0) > 0) {
-            $this->error($response, 'Cannot delete student with existing marks', 422);
+        $regnumber = (string)($student['regnumber'] ?? '');
+        $blockers  = $this->deleteBlockers($regnumber);
+
+        if ($blockers['marks'] > 0) {
+            $this->error($response, "Cannot delete this student: {$blockers['marks']} module mark(s) are recorded.", 422);
+        }
+        if ($blockers['paid_payments'] > 0 || $blockers['paid_invoices'] > 0) {
+            $this->error($response, "Cannot delete this student: money has been paid ({$blockers['paid_payments']} confirmed payment(s), {$blockers['paid_invoices']} paid invoice(s)).", 422);
         }
 
-        // Check for paid invoices/transactions
-        $paidCount = $this->db->fetchOne(
-            "SELECT COUNT(*) AS cnt FROM `student_invoices` WHERE student_id = ? AND status = 'paid'",
-            [$id]
-        );
-        if (($paidCount['cnt'] ?? 0) > 0) {
-            $this->error($response, 'Cannot delete student with paid invoices', 422);
+        $db = \Core\Database::getInstance();
+
+        try {
+            $db->beginTransaction();
+
+            if ($regnumber !== '') {
+                // Only unconfirmed/rejected payments remain here (confirmed ones block above).
+                // Payments must go before the invoices they point at.
+                $this->db->execute("DELETE FROM `fee_payments` WHERE student_id = ?", [$regnumber]);
+                $this->db->execute("DELETE FROM `fee_invoices` WHERE student_id = ?", [$regnumber]);
+            }
+
+            $this->studentModel->delete($id);
+
+            $db->commit();
+        } catch (\Throwable $e) {
+            $db->rollBack();
+            $this->error($response, 'Could not delete student: ' . $e->getMessage(), 422);
         }
 
-        // Delete from related tables
-        $this->db->execute("DELETE FROM `student_marks` WHERE student_id = ?", [$id]);
-        $this->db->execute("DELETE FROM `student_invoices` WHERE student_id = ?", [$id]);
-        $this->db->execute("DELETE FROM `student_attendance` WHERE student_id = ?", [$id]);
-        $this->db->execute("DELETE FROM `student_exemptions` WHERE student_id = ?", [$id]);
+        SystemLogService::log('DELETE', 'STUDENTS', "Student #{$id} ({$regnumber}) permanently deleted.", $id, 'student', [
+            'regnumber' => $regnumber,
+            'name'      => trim(($student['fname'] ?? '') . ' ' . ($student['lname'] ?? '')),
+        ], (array) $request->param('_auth_user') ?: null);
 
-        // Delete the student record
-        $this->studentModel->delete($id);
-        $this->success($response, null, 'Student deleted permanently from all tables.');
+        $this->success($response, null, 'Student deleted permanently.');
     }
 
     /* ─────────────────────────────────────────────────────────────────

@@ -91,6 +91,7 @@ $router->group('/api/students', function ($router) {
     $router->post('/bulk-upload',        [StudentController::class, 'bulkUpload']);
     $router->post('',              [StudentController::class, 'create']);
     $router->post('/:id',           [StudentController::class, 'update']);
+    $router->get('/:id/delete-check', [StudentController::class, 'deleteCheck']);
     $router->delete('/:id',        [StudentController::class, 'delete']);
     $router->post('/:id/photo',    [StudentController::class, 'uploadPhoto']);
     $router->delete('/:id/photo',  [StudentController::class, 'deletePhoto']);
