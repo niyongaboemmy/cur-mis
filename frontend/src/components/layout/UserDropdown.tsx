@@ -131,7 +131,9 @@ export default function UserDropdown() {
 
             {/* Menu */}
             <div className="p-1.5">
-              <MenuItem icon={<User     className="h-4 w-4" />} onClick={() => go(isStudentRole ? '/me/profile' : '/profile')}>My profile</MenuItem>
+              {isStudentRole && (
+                <MenuItem icon={<User     className="h-4 w-4" />} onClick={() => go('/me/profile')}>My profile</MenuItem>
+              )}
               {!isStudentRole && (
                 <MenuItem icon={<KeyRound className="h-4 w-4" />} onClick={() => go('/account')}>Account &amp; password</MenuItem>
               )}
