@@ -519,7 +519,16 @@ export default function AdmissionFeesPanel({
                     </button>
                   )}
 
-
+                  {/* Record unpaid money manually (validator only) */}
+                  {isValidator && canManage && (
+                    <button
+                      className="btn-secondary"
+                      onClick={() => setConfirming(bill)}
+                      title="Record a bank transfer or cash payment already received"
+                    >
+                      <ShieldCheck className="w-4 h-4" /> Record unpaid money manually
+                    </button>
+                  )}
                 </div>
               )}
             </div>
