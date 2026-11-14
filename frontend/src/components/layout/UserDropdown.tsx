@@ -41,6 +41,9 @@ export default function UserDropdown() {
   // Use user?.photo (from auth store, updated on upload) as the cache-buster so
   // the avatar refreshes immediately after a photo upload — no error-state needed.
   const isStudent = usePermission(PERMISSIONS.ACCESS_STUDENT_PORTAL);
+  // Route by role, not permission: superadmin holds every permission, so the
+  // permission check alone would send superadmins to the student profile.
+  const isStudentRole = user?.role === 'student';
 
   const studentQ = useQuery({
     queryKey: ['student', 'me'],
@@ -128,8 +131,8 @@ export default function UserDropdown() {
 
             {/* Menu */}
             <div className="p-1.5">
-              <MenuItem icon={<User     className="h-4 w-4" />} onClick={() => go(isStudent ? '/me/profile' : '/profile')}>My profile</MenuItem>
-              {!isStudent && (
+              <MenuItem icon={<User     className="h-4 w-4" />} onClick={() => go(isStudentRole ? '/me/profile' : '/profile')}>My profile</MenuItem>
+              {!isStudentRole && (
                 <MenuItem icon={<KeyRound className="h-4 w-4" />} onClick={() => go('/account')}>Account &amp; password</MenuItem>
               )}
 
