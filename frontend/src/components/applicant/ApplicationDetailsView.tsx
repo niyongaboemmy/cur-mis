@@ -27,7 +27,7 @@ import {
   ExternalLink,
   UploadCloud,
 } from "lucide-react";
-import { applicantService } from "@/services/admissionService";
+import { applicantService, type AdmissionBillingOverview } from "@/services/admissionService";
 import {
   Card,
   SectionHeader,
@@ -82,6 +82,17 @@ export default function ApplicationDetailsView({
     queryKey: ["admission-bills", "applicant"],
     queryFn: ({ signal }) => applicantService.getAdmissionBills(signal),
     enabled: application.status === "offer_accepted",
+    // A payment the gateway confirms must show here without a manual refresh.
+    // Poll while money is still owed, and while enrollment is still pending —
+    // the same rule AdmissionFeesPanel uses for the same data.
+    refetchInterval: (query) => {
+      const d = query.state.data?.data as AdmissionBillingOverview | undefined;
+      if (!d) return false;
+      if (d.summary.balance > 0 && d.is_billed) return 10000;
+      if (d.fully_paid && !d.registration_number) return 4000;
+      return false;
+    },
+    refetchIntervalInBackground: true,
   });
 
   const billsData = billsQ.data?.data;
@@ -647,6 +658,13 @@ export default function ApplicationDetailsView({
                       </div>
                     </div>
                   </div>
+
+                  {(billsData.credit?.unapplied ?? 0) > 0 && (
+                    <div className="p-3 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-900/30 mb-4 text-[12px] text-emerald-800 dark:text-emerald-200">
+                      <span className="font-semibold">{fmtNumber(billsData.credit?.unapplied ?? 0)} RWF</span> received and held on your account.
+                      It will be applied to your admission fees automatically as each bill is raised.
+                    </div>
+                  )}
 
                   {/* Programme Tier Info */}
                   {app.programme_category && (

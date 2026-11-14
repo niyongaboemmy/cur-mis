@@ -494,14 +494,37 @@ class AdmissionController extends BaseController
             $this->error($response, $e->getMessage(), 422);
         }
 
+        $excessNote = $result['excess'] > 0.009
+            ? ' ' . number_format($result['excess'], 0) . ' RWF above this fee is held as credit against the other fees.'
+            : '';
+
         $this->success(
             $response,
             $result,
-            $result['summary']['fully_paid']
+            ($result['summary']['fully_paid']
                 ? 'Payment recorded. All admission fees are settled — the registration number is being issued.'
-                : 'Payment recorded. The applicant has been notified.',
+                : 'Payment recorded. The applicant has been notified.') . $excessNote,
             201
         );
+    }
+
+    /**
+     * GET /api/admin/applications/:id/payment-status
+     *
+     * Total paid against total required for the applicant's admission fees,
+     * with every payment behind the figure. The next step is allowed only when
+     * `sufficient` is true.
+     */
+    public function paymentStatus(Request $request, Response $response): never
+    {
+        $appId  = (int)$request->param('id');
+        $status = (new \App\Services\AdmissionPaymentStatusService())->forApplication($appId);
+
+        if ($status === null) {
+            $this->error($response, 'Application not found.', 404);
+        }
+
+        $this->success($response, $status, 'Payment status fetched.');
     }
 
     /**

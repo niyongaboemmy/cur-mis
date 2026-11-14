@@ -18,7 +18,7 @@ class ApplicationInvoicePaymentModel extends BaseModel
     protected array $fillable = [
         'application_invoice_id', 'application_id', 'amount', 'currency',
         'payment_method', 'reference_number', 'receipt_number', 'service_code',
-        'source', 'recorded_by', 'notes', 'paid_at',
+        'source', 'recorded_by', 'notes', 'paid_at', 'application_credit_id',
     ];
     protected array $hidden = [];
 
