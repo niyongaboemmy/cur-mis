@@ -140,7 +140,7 @@ class SearchController extends BaseController
             'id' => (int) $r['id'],
             'title' => trim($r['first_name'] . ' ' . $r['last_name']),
             'subtitle' => ($r['application_number'] ?? '') . ' · ' . ($r['status'] ?? ''),
-            'to' => '/admin/applications/' . $r['id'],
+            'to' => '/admin/admissions/applications/' . $r['id'],
         ], $rows);
     }
 
