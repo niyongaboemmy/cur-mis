@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { User, LogOut, Sun, Moon, ChevronDown } from "lucide-react";
+import { User, LogOut, Sun, Moon, ChevronDown, KeyRound } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { useThemeStore } from "@/store/themeStore";
 import { useLogout } from "@/hooks/useAuth";
@@ -129,6 +129,9 @@ export default function UserDropdown() {
             {/* Menu */}
             <div className="p-1.5">
               <MenuItem icon={<User     className="h-4 w-4" />} onClick={() => go(isStudent ? '/me/profile' : '/profile')}>My profile</MenuItem>
+              {!isStudent && (
+                <MenuItem icon={<KeyRound className="h-4 w-4" />} onClick={() => go('/account')}>Account &amp; password</MenuItem>
+              )}
 
               {/* Theme toggle */}
               <button
