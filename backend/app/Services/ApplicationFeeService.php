@@ -295,9 +295,18 @@ class ApplicationFeeService
 
         // Legacy safety net: an application settled before the ledger existed
         // and not caught by the backfill still reports what it carries.
+        // The flat column is cumulative: it can also hold money already booked to
+        // admission bills (registration, CURSU). Take those out first, and never
+        // report more than this fee costs, so admission money is not counted twice.
         $flat = (float)($app['payment_amount'] ?? 0);
         if (!$payments && $flat > 0) {
-            $paid = $flat;
+            $admissionBooked = (float)($this->db->fetchOne(
+                "SELECT COALESCE(SUM(amount), 0) AS total
+                   FROM `application_invoice_payments`
+                  WHERE application_id = ?",
+                [$applicationId]
+            )['total'] ?? 0);
+            $paid = max(0.0, min($flat - $admissionBooked, $required));
         }
 
         $paid    = round($paid, 2);
