@@ -88,6 +88,13 @@ class StudentIdModel extends BaseModel
             $params[] = $campus;
         }
 
+        // Campus-locked staff: only their campuses (CampusScopeService::studentCondition).
+        // Null when the user is unrestricted.
+        if (is_array($filters['campus_scope'] ?? null)) {
+            $where[] = $filters['campus_scope'][0];
+            array_push($params, ...$filters['campus_scope'][1]);
+        }
+
         // Year of the active card's issue date. Students with no active card
         // have no issue year, so they drop out of a year-filtered list.
         $year = (int) ($filters['year'] ?? 0);
