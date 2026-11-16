@@ -53,7 +53,7 @@ const STATUSES: { value: string; label: string }[] = [
   // Pseudo-statuses surfaced first so the dropdown can reproduce every tile.
   { value: PENDING_FILTER,                           label: 'Pending (queue)' },
   { value: IN_REVIEW_FILTER,                         label: 'In review (queue)' },
-  { value: OFFERS_FILTER,                            label: 'Offers (queue)' },
+  { value: OFFERS_FILTER,                            label: 'Accepted (queue)' },
   { value: ACTION_FILTER,                            label: 'Action needed (queue)' },
   { value: ApplicationStatus.SUBMITTED,              label: 'Submitted only' },
   { value: ApplicationStatus.DOCUMENTS_UNDER_REVIEW, label: 'Docs under review' },
@@ -313,7 +313,7 @@ export default function ApplicationsListPage() {
               onClick={() => { setStatus(IN_REVIEW_FILTER); setPage(1) }}
             />
             <StatTile
-              icon={Sparkles} label="Offers" value={stats.offers}
+              icon={Sparkles} label="Accepted" value={stats.offers}
               accent="bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
               highlight={stats.offers > 0}
               active={status === OFFERS_FILTER}
