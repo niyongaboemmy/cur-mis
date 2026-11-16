@@ -353,7 +353,7 @@ export default function OffersPage() {
                             Enroll
                           </button>
                         )}
-                        {o.enrollment_initiated && <span className="chip-success">Enrolled</span>}
+                        {o.enrollment_initiated && <span className="chip-success">Admitted</span>}
                       </div>
                     </td>
                   </tr>

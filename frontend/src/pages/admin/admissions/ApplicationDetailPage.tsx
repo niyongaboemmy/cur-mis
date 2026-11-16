@@ -109,7 +109,7 @@ function MultiStepBar({
     },
     {
       id: 2,
-      label: "Offered",
+      label: "Accepted",
       sublabel: "Awaiting fee",
       icon: Sparkles,
     },
@@ -121,7 +121,7 @@ function MultiStepBar({
     },
     {
       id: 4,
-      label: "Enrolled",
+      label: "Admitted",
       sublabel: "Reg # issued",
       icon: UserPlus,
     },
@@ -142,7 +142,7 @@ function MultiStepBar({
           </p>
           <p className="text-[12.5px] text-ink-500 mt-0.5">
             {maxStep >= steps.length
-              ? "All stages complete — student is enrolled."
+              ? "All stages complete — student is admitted."
               : `On stage ${maxStep} of ${steps.length}: ${steps[Math.max(0, maxStep - 1)].label}`}
           </p>
         </div>

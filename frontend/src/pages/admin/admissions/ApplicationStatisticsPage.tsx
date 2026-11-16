@@ -27,7 +27,7 @@ export default function ApplicationStatisticsPage() {
   const totals = statsQ.data?.data?.totals ?? null
 
   const downloadCsv = () => {
-    const header = ['Faculty', 'Department', 'Program', 'Total', 'New', 'Accepted', 'Enrolled', 'Withdrawn']
+    const header = ['Faculty', 'Department', 'Program', 'Total', 'New', 'Accepted', 'Admitted', 'Withdrawn']
     const body = rows.map((r) => [
       r.faculty ?? '', r.department ?? '', r.program ?? '',
       r.total, r.new_count, r.accepted_count, r.enrolled_count, r.withdrawn_count,
@@ -101,7 +101,7 @@ export default function ApplicationStatisticsPage() {
                 <th className="text-right">Total</th>
                 <th className="text-right">New</th>
                 <th className="text-right">Accepted</th>
-                <th className="text-right">Enrolled</th>
+                <th className="text-right">Admitted</th>
                 <th className="text-right">Withdrawn</th>
               </tr>
             </thead>

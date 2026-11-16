@@ -27,10 +27,10 @@ const STATUS_LABEL: Record<string, string> = {
   documents_verified:     'Docs verified',
   documents_rejected:     'Docs rejected',
   requested_changes:      'Changes requested',
-  offered:                'Offered',
+  offered:                'Accepted',
   offer_accepted:         'Fee paid',
   offer_declined:         'Declined',
-  enrolled:               'Enrolled',
+  enrolled:               'Admitted',
   withdrawn:              'Withdrawn',
   draft:                  'Draft',
 }
@@ -60,11 +60,11 @@ const STATUSES: { value: string; label: string }[] = [
   { value: ApplicationStatus.DOCUMENTS_VERIFIED,     label: 'Docs verified' },
   { value: ApplicationStatus.DOCUMENTS_REJECTED,     label: 'Docs rejected' },
   { value: ApplicationStatus.REQUESTED_CHANGES,      label: 'Changes requested' },
-  { value: ApplicationStatus.OFFERED,                label: 'Offered' },
+  { value: ApplicationStatus.OFFERED,                label: 'Accepted' },
   { value: ApplicationStatus.OFFER_ACCEPTED,         label: 'Fee paid' },
   { value: ApplicationStatus.OFFER_DECLINED,         label: 'Declined' },
-  { value: ENROLLED_QUEUE_FILTER,                    label: 'Enrolled (incl. linked students)' },
-  { value: ApplicationStatus.ENROLLED,               label: 'Enrolled (status only)' },
+  { value: ENROLLED_QUEUE_FILTER,                    label: 'Admitted (incl. linked students)' },
+  { value: ApplicationStatus.ENROLLED,               label: 'Admitted (status only)' },
   { value: ApplicationStatus.WITHDRAWN,              label: 'Withdrawn' },
 ]
 
@@ -320,7 +320,7 @@ export default function ApplicationsListPage() {
               onClick={() => { setStatus(OFFERS_FILTER); setPage(1) }}
             />
             <StatTile
-              icon={GraduationCap} label="Enrolled" value={stats.enrolled}
+              icon={GraduationCap} label="Admitted" value={stats.enrolled}
               accent="bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
               active={status === ENROLLED_QUEUE_FILTER}
               onClick={() => { setStatus(ENROLLED_QUEUE_FILTER); setPage(1) }}
