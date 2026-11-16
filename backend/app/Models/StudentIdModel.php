@@ -109,6 +109,35 @@ class StudentIdModel extends BaseModel
             $params[] = $optionId;
         }
 
+        // Academic filters for the ID-card workspace. Same columns and matching
+        // as the Students list: faculty/department are catalogue ids stored on
+        // `student`, learning_mode is the Day/Evening/Weekend/Holiday column.
+        foreach (['faculty' => 's.faculty', 'department' => 's.department'] as $key => $column) {
+            $value = trim((string) ($filters[$key] ?? ''));
+            if ($value !== '') {
+                $where[] = "{$column} = ?";
+                $params[] = $value;
+            }
+        }
+
+        $learningMode = trim((string) ($filters['learning_mode'] ?? ''));
+        if ($learningMode !== '') {
+            $where[] = 'LOWER(TRIM(s.learning_mode)) = LOWER(?)';
+            $params[] = $learningMode;
+        }
+
+        // Undergraduate / postgraduate, matching the legacy spellings the
+        // Students list accepts ("under graduate", "post graduate").
+        $categoryVariants = match (strtolower(trim((string) ($filters['category'] ?? '')))) {
+            'undergraduate' => ['undergraduate', 'under graduate'],
+            'postgraduate'  => ['postgraduate', 'post graduate'],
+            default         => [],
+        };
+        if ($categoryVariants !== []) {
+            $where[] = 'LOWER(TRIM(s.category)) IN (' . implode(',', array_fill(0, count($categoryVariants), '?')) . ')';
+            array_push($params, ...$categoryVariants);
+        }
+
         // The active card, if any — LIMIT 1 inside a correlated subquery keeps
         // this a single round trip regardless of how long a student's card
         // history is.

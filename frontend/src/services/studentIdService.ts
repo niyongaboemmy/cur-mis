@@ -49,6 +49,10 @@ export interface StudentIdRosterFilters {
   year?:      number
   campus?:    string
   option_id?: number
+  faculty?:       string
+  department?:    string
+  learning_mode?: string
+  category?:      string
 }
 
 /** Save a blob to disk under `name`. */

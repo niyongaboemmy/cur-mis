@@ -48,6 +48,10 @@ class StudentIdController extends BaseController
             'year'      => (int) ($request->query('year') ?? 0),
             'campus'    => (string) ($request->query('campus') ?? ''),
             'option_id' => (int) ($request->query('option_id') ?? 0),
+            'faculty'       => (string) ($request->query('faculty') ?? ''),
+            'department'    => (string) ($request->query('department') ?? ''),
+            'learning_mode' => (string) ($request->query('learning_mode') ?? ''),
+            'category'      => (string) ($request->query('category') ?? ''),
             'campus_scope' => CampusScopeService::studentCondition((array) $request->param('_auth_user'), 's.campus'),
         ], $page, $perPage);
 

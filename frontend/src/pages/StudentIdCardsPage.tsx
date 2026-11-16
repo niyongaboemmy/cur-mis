@@ -13,6 +13,7 @@ import {
   studentIdService,
   type StudentIdRosterRow,
 } from "@/services/studentIdService";
+import { studentService } from "@/services/studentService";
 import CardSizeDialog from "@/components/students/CardSizeDialog";
 import { PERMISSIONS } from "@/constants/permissions";
 import { usePermission } from "@/utils/permissions";
@@ -68,15 +69,55 @@ export default function StudentIdCardsPage() {
   const [validityYears, setValidityYears] = useState(4);
   const [selected, setSelected] = useState<number[]>([]);
 
+  // Academic filters. Each parent change clears the children below it, so an
+  // option can never stay selected under a department it does not belong to.
+  const [faculty, setFaculty] = useState("");
+  const [department, setDepartment] = useState("");
+  const [option, setOption] = useState("");
+  const [learningMode, setLearningMode] = useState("");
+  const [category, setCategory] = useState("");
+
   const rosterQ = useQuery({
-    queryKey: ["student-ids", "roster", page, keyword, state, year],
+    queryKey: ["student-ids", "roster", page, keyword, state, year, faculty, department, option, learningMode, category],
     queryFn: ({ signal }) =>
       studentIdService.roster(
-        { page, per_page: 25, keyword, state, year: Number(year) || 0 },
+        {
+          page,
+          per_page: 25,
+          keyword,
+          state,
+          year: Number(year) || 0,
+          faculty,
+          department,
+          option_id: Number(option) || 0,
+          learning_mode: learningMode,
+          category,
+        },
         signal,
       ),
     placeholderData: keepPreviousData,
   });
+
+  // Faculty / department / option lists come from the same endpoint the
+  // Students page uses, so each list only offers values that exist in the
+  // chosen scope (the endpoint cascades the other filters into each list).
+  const facetsQ = useQuery({
+    queryKey: ["student-ids", "facets", faculty, department, option, learningMode],
+    queryFn: ({ signal }) =>
+      studentService.filterOptions(
+        {
+          faculty: faculty || undefined,
+          department: department || undefined,
+          std_option: option || undefined,
+          learning_mode: learningMode || undefined,
+        },
+        signal,
+      ),
+    staleTime: 60_000,
+    placeholderData: keepPreviousData,
+  });
+  const facets = facetsQ.data?.data;
+  const hasAcademicFilter = !!(faculty || department || option || learningMode || category);
 
   const rows = rosterQ.data?.data?.data ?? [];
   const pagination = rosterQ.data?.data?.pagination;
@@ -259,6 +300,104 @@ export default function StudentIdCardsPage() {
                 {printing ? "Building…" : "Print selected"}
               </button>
             </div>
+          )}
+        </div>
+
+        <div className="px-3 py-2.5 border-b border-ink-200 dark:border-ink-800 flex flex-wrap gap-2 items-center">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-ink-500 mr-1">Filter by</span>
+
+          <label className="sr-only" htmlFor="card-category">Category</label>
+          <select
+            id="card-category"
+            className="input w-full sm:w-44"
+            value={category}
+            onChange={(e) => { setCategory(e.target.value); setPage(1); setSelected([]); }}
+          >
+            <option value="">All categories</option>
+            <option value="undergraduate">Undergraduate</option>
+            <option value="postgraduate">Postgraduate (Masters)</option>
+          </select>
+
+          <label className="sr-only" htmlFor="card-faculty">Faculty</label>
+          <select
+            id="card-faculty"
+            className="input w-full sm:w-52"
+            value={faculty}
+            onChange={(e) => {
+              setFaculty(e.target.value);
+              setDepartment("");
+              setOption("");
+              setPage(1);
+              setSelected([]);
+            }}
+          >
+            <option value="">All faculties</option>
+            {(facets?.faculties ?? []).map((f) => (
+              <option key={f.value} value={f.value}>{f.label}</option>
+            ))}
+          </select>
+
+          <label className="sr-only" htmlFor="card-department">Department</label>
+          <select
+            id="card-department"
+            className="input w-full sm:w-52"
+            value={department}
+            onChange={(e) => {
+              setDepartment(e.target.value);
+              setOption("");
+              setPage(1);
+              setSelected([]);
+            }}
+          >
+            <option value="">All departments</option>
+            {(facets?.departments ?? []).map((d) => (
+              <option key={d.value} value={d.value}>{d.label}</option>
+            ))}
+          </select>
+
+          <label className="sr-only" htmlFor="card-option">Option</label>
+          <select
+            id="card-option"
+            className="input w-full sm:w-60"
+            value={option}
+            onChange={(e) => { setOption(e.target.value); setPage(1); setSelected([]); }}
+          >
+            <option value="">All options</option>
+            {(facets?.options ?? []).map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+
+          <label className="sr-only" htmlFor="card-mode">Mode of study</label>
+          <select
+            id="card-mode"
+            className="input w-full sm:w-40"
+            value={learningMode}
+            onChange={(e) => { setLearningMode(e.target.value); setPage(1); setSelected([]); }}
+          >
+            <option value="">All modes</option>
+            <option value="day">Day</option>
+            <option value="evening">Evening</option>
+            <option value="weekend">Weekend</option>
+            <option value="holiday">Holiday</option>
+          </select>
+
+          {hasAcademicFilter && (
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => {
+                setFaculty("");
+                setDepartment("");
+                setOption("");
+                setLearningMode("");
+                setCategory("");
+                setPage(1);
+                setSelected([]);
+              }}
+            >
+              Clear filters
+            </button>
           )}
         </div>
 
