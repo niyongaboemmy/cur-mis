@@ -622,11 +622,12 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
   // Admin, Registrar, and Super Admin can delete students
   const canDeleteStudents = !!(user?.role_name && ['Admin', 'registrar', 'superadmin'].includes(user.role_name));
 
-  // Adding students is limited to Admin, registrar and superadmin (same group as delete).
-  const canAddStudent = canDeleteStudents;
-
   // Inline district edit saves through POST /students/:id, which needs MANAGE_STUDENTS.
   const canEditDistrict = usePermission(PERMISSIONS.MANAGE_STUDENTS);
+
+  // Adding students follows the MANAGE_STUDENTS permission, so any role granted it
+  // (not only the hard-coded role names above) gets the button.
+  const canAddStudent = canDeleteStudents || canEditDistrict;
 
   const [hiddenCols, setHiddenCols] = useState<string[]>(readHiddenColumns);
   const toggleColumn = (key: string) => {
