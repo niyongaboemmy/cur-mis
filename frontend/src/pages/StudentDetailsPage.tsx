@@ -1889,6 +1889,22 @@ function ProgrammeSection({
 }) {
   const { levelName: resolveLevelName } = useLevels();
   const campusOptions = useCampusOptions();
+  // Full faculty and department catalogue, for the editable pickers.
+  const catalogQ = useQuery({
+    queryKey: ["student-catalogue"],
+    queryFn: ({ signal }) => studentService.filterOptions({}, signal),
+    enabled: !selfMode,
+    staleTime: 1000 * 60 * 5,
+  });
+  const facultyList = (catalogQ.data?.data?.faculties ?? []) as Array<{
+    value: string;
+    label: string;
+  }>;
+  const departmentList = (catalogQ.data?.data?.departments ?? []) as Array<{
+    value: string;
+    label: string;
+    faculty_id: string | null;
+  }>;
   const [editing, setEditing] = useState(false);
 
   const pick = (...vals: any[]) =>
@@ -1942,6 +1958,8 @@ function ProgrammeSection({
     regnumber: (student.regnumber ?? "") as string,
     student_state: normaliseStudentState(student.student_state),
     sponsor: (student.sponsor ?? "") as string,
+    faculty: student.faculty ? String(student.faculty) : "",
+    department: student.department ? String(student.department) : "",
     campus: student.campus ? String(student.campus) : "",
     mode_of_study: app?.mode_of_study ? String(app.mode_of_study) : "",
   });
@@ -1959,6 +1977,8 @@ function ProgrammeSection({
     student.student_state,
     student.sponsor,
     student.campus,
+    student.faculty,
+    student.department,
     app?.mode_of_study,
   ]);
 
@@ -1982,28 +2002,19 @@ function ProgrammeSection({
         : {
             campus: form.campus || null,
             mode_of_study: form.mode_of_study ? Number(form.mode_of_study) : null,
+            // Only sent when changed, so a plain programme save behaves as before.
+            ...(form.faculty !== String(student.faculty ?? "")
+              ? { faculty: form.faculty || null }
+              : {}),
+            ...(form.department !== String(student.department ?? "")
+              ? { department: form.department || null }
+              : {}),
           }),
     });
 
   useEffect(() => {
     if (save.isSuccess) setEditing(false);
   }, [save.isSuccess]);
-
-  // Selected option preview helps admins see the cascading faculty/department
-  // they're about to commit to before they save.
-  const selectedOption =
-    optionFacets.find((o) => String(o.value) === String(form.std_option)) ??
-    null;
-  const previewFaculty = selectedOption
-    ? (facultyFacets.find(
-        (f) => String(f.value) === String(selectedOption.faculty_id),
-      )?.label ?? facultyName)
-    : facultyName;
-  const previewDept = selectedOption
-    ? (departmentFacets.find(
-        (d) => String(d.value) === String(selectedOption.department_id),
-      )?.label ?? deptName)
-    : deptName;
 
   return (
     <section className="card p-6">
@@ -2030,7 +2041,25 @@ function ProgrammeSection({
             <FieldGroup label="Program" icon={BookOpen}>
               <select
                 value={form.std_option}
-                onChange={set("std_option")}
+                onChange={(e) => {
+                  // Picking a programme brings its faculty and department with
+                  // it; they can still be changed below.
+                  const opt = optionFacets.find(
+                    (o) => String(o.value) === e.target.value,
+                  );
+                  setForm((f) => ({
+                    ...f,
+                    std_option: e.target.value,
+                    faculty:
+                      opt?.faculty_id != null
+                        ? String(opt.faculty_id)
+                        : f.faculty,
+                    department:
+                      opt?.department_id != null
+                        ? String(opt.department_id)
+                        : f.department,
+                  }));
+                }}
                 className={selectInputClass}
               >
                 <option value="">— Select program —</option>
@@ -2041,16 +2070,47 @@ function ProgrammeSection({
                 ))}
               </select>
             </FieldGroup>
-            <InfoGroup
-              label="Faculty"
-              value={previewFaculty}
-              icon={Building2}
-            />
-            <InfoGroup
-              label="Department"
-              value={previewDept}
-              icon={GraduationCap}
-            />
+            <FieldGroup label="Faculty" icon={Building2}>
+              <select
+                value={form.faculty}
+                onChange={(e) =>
+                  // A department belongs to one faculty, so changing the
+                  // faculty clears the department for the user to choose again.
+                  setForm((f) => ({
+                    ...f,
+                    faculty: e.target.value,
+                    department: "",
+                  }))
+                }
+                className={selectInputClass}
+              >
+                <option value="">— Select faculty —</option>
+                {facultyList.map((f) => (
+                  <option key={f.value} value={f.value}>
+                    {f.label}
+                  </option>
+                ))}
+              </select>
+            </FieldGroup>
+            <FieldGroup label="Department" icon={GraduationCap}>
+              <select
+                value={form.department}
+                onChange={set("department")}
+                className={selectInputClass}
+              >
+                <option value="">— Select department —</option>
+                {departmentList
+                  .filter(
+                    (d) =>
+                      !form.faculty || String(d.faculty_id) === form.faculty,
+                  )
+                  .map((d) => (
+                    <option key={d.value} value={d.value}>
+                      {d.label}
+                    </option>
+                  ))}
+              </select>
+            </FieldGroup>
 
             <FieldGroup label="Current Level" icon={CheckCircle}>
               <select

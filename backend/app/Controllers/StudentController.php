@@ -1115,6 +1115,45 @@ class StudentController extends BaseController
             $patch['department'] = isset($option['department_id']) ? (string)$option['department_id'] : ($data['department'] ?? $student['department']);
         }
 
+        // Faculty and department can also be changed on their own. An explicit
+        // value overrides the one derived from the option above and must exist
+        // in the catalogue; a department must sit inside the chosen faculty.
+        if (array_key_exists('faculty', $data) && (string)($data['faculty'] ?? '') !== '') {
+            $facRow = $this->studentModel->db()->fetchOne(
+                "SELECT fac_id FROM `faculty` WHERE fac_id = ? LIMIT 1",
+                [(int)$data['faculty']]
+            );
+            if (!$facRow) {
+                $this->error($response, 'Validation failed', 422, ['faculty' => ['Selected faculty is invalid.']]);
+            }
+            $patch['faculty'] = (string)(int)$facRow['fac_id'];
+        }
+        if (array_key_exists('department', $data) && (string)($data['department'] ?? '') !== '') {
+            $depRow = $this->studentModel->db()->fetchOne(
+                "SELECT dep_id FROM `departements` WHERE dep_id = ? LIMIT 1",
+                [(int)$data['department']]
+            );
+            if (!$depRow) {
+                $this->error($response, 'Validation failed', 422, ['department' => ['Selected department is invalid.']]);
+            }
+            $patch['department'] = (string)(int)$depRow['dep_id'];
+        }
+        if (array_key_exists('faculty', $data) || array_key_exists('department', $data)) {
+            $effFaculty = $patch['faculty'] ?? $student['faculty'] ?? null;
+            $effDept    = $patch['department'] ?? $student['department'] ?? null;
+            if ($effFaculty && $effDept) {
+                $depFac = $this->studentModel->db()->fetchOne(
+                    "SELECT fac_id FROM `departements` WHERE dep_id = ? LIMIT 1",
+                    [(int)$effDept]
+                );
+                if ($depFac && (string)(int)$depFac['fac_id'] !== (string)(int)$effFaculty) {
+                    $this->error($response, 'Validation failed', 422, [
+                        'department' => ['This department does not belong to the selected faculty. Choose a department in that faculty.'],
+                    ]);
+                }
+            }
+        }
+
         // Fields shown on the details page that live on the admission
         // application. Written to the application row when the student has one,
         // and to the student row too where both hold the value (the page prefers
