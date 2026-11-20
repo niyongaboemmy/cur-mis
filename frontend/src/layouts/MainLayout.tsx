@@ -24,6 +24,7 @@ import {
   ScrollText,
   ScanLine,
   Wallet,
+  CalendarDays,
   Package,
   Presentation,
   LifeBuoy,
@@ -278,6 +279,23 @@ const NAV_TREE: NavNode[] = [
     label: "My Payroll",
     icon: Wallet,
     to: "/me/payslips",
+    hideForRoles: ["student", "applicant"],
+  },
+  {
+    // Self-service leave for every staff account. Hidden from students/applicants.
+    id: "my-leave",
+    label: "My Leave",
+    icon: CalendarDays,
+    to: "/me/leave",
+    hideForRoles: ["student", "applicant"],
+  },
+  {
+    // Leave requests and approvals for every staff account. Hidden from
+    // students/applicants.
+    id: "leave-requests",
+    label: "All requests & Approval",
+    icon: CalendarDays,
+    to: "/me/leave-requests",
     hideForRoles: ["student", "applicant"],
   },
   {
