@@ -34,6 +34,7 @@ $router->group('/api/attendance', function ($router) {
         $r->get('/overview',                   [AttendanceController::class, 'overview']);
         $r->get('/teachable-modules',          [AttendanceController::class, 'myTeachableModules']);
         $r->get('/scheduled-blocks',           [AttendanceController::class, 'listScheduledBlocks']);
+        $r->get('/catalogue',                  [AttendanceController::class, 'catalogue']);
         $r->get('/students/search',            [AttendanceController::class, 'searchStudents']);
         $r->get('/students/:regnumber/summary',[AttendanceController::class, 'studentSummary']);
         // Numeric-id variant — regnumbers like "STD/2026/22699" have slashes

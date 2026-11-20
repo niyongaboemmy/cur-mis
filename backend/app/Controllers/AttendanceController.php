@@ -1304,4 +1304,46 @@ class AttendanceController extends BaseController
         }
         $this->success($response, ['added' => $added, 'already' => $already], $msg);
     }
+    /**
+     * GET /api/attendance/catalogue
+     *
+     * Faculties, departments and programmes for the enrol dialog's cascading
+     * filters: a department belongs to one faculty, a programme to one
+     * department. Reference data only, no student records, so anyone with
+     * attendance access can load it.
+     */
+    public function catalogue(Request $request, Response $response): never
+    {
+        $faculties = [];
+        foreach ($this->db->fetchAll("SELECT fac_id, fac_name FROM `faculty` ORDER BY fac_name ASC") as $r) {
+            $faculties[] = ['value' => (string) $r['fac_id'], 'label' => trim((string) $r['fac_name'])];
+        }
+
+        $departments = [];
+        foreach ($this->db->fetchAll("SELECT dep_id, dep_name, fac_id FROM `departements` ORDER BY dep_name ASC") as $r) {
+            $departments[] = [
+                'value'      => (string) $r['dep_id'],
+                'label'      => trim((string) $r['dep_name']),
+                'faculty_id' => $r['fac_id'] !== null ? (string) $r['fac_id'] : null,
+            ];
+        }
+
+        $options = [];
+        foreach ($this->db->fetchAll(
+            "SELECT o.id, o.name, o.department_id, d.fac_id
+             FROM `options` o
+             LEFT JOIN `departements` d ON d.dep_id = o.department_id
+             WHERE COALESCE(o.is_active, 1) = 1
+             ORDER BY o.name ASC"
+        ) as $r) {
+            $options[] = [
+                'value'         => (string) $r['id'],
+                'label'         => trim((string) $r['name']),
+                'department_id' => $r['department_id'] !== null ? (string) $r['department_id'] : null,
+                'faculty_id'    => $r['fac_id'] !== null ? (string) $r['fac_id'] : null,
+            ];
+        }
+
+        $this->success($response, ['faculties' => $faculties, 'departments' => $departments, 'options' => $options]);
+    }
 }

@@ -253,6 +253,14 @@ export const attendanceService = {
   createSession: (payload: CreateSessionPayload) =>
     api.post<{ id: number }>('/attendance/sessions', payload),
 
+  /** Faculties, departments and programmes for the enrol dialog's cascading filters. */
+  catalogue: () =>
+    api.get<{
+      faculties: Array<{ value: string; label: string }>
+      departments: Array<{ value: string; label: string; faculty_id: string | null }>
+      options: Array<{ value: string; label: string; department_id: string | null; faculty_id: string | null }>
+    }>('/api/attendance/catalogue'),
+
   /** Student lookup for the enrol picker. Uses attendance permissions, not VIEW_STUDENTS. */
   searchStudents: (params: { q?: string; faculty?: string; department?: string; std_option?: string } = {}) =>
     api.get<Array<{ id: number; regnumber: string; fname: string; lname: string; student_state: string | null }>>(

@@ -44,7 +44,6 @@ import {
   type CreateSessionPayload,
 } from '@/services/attendanceService'
 import { apiClient } from '@/services/api'
-import { studentService } from '@/services/studentService'
 import { academicsMgmtService } from '@/services/academicsMgmtService'
 import { portalService } from '@/services/admissionService'
 import { useSystemStore } from '@/store/systemStore'
@@ -1906,51 +1905,6 @@ function SchedulePicker({
         )}
       </section>
 
-      {/* Teachable modules with no timetable block yet. Attendance still works:
-          open the module and add its students to the roster from the record tab. */}
-      {(() => {
-        const scheduledIds = new Set(allBlocks.map((b) => Number(b.module_id)))
-        const needle = gSearch.trim().toLowerCase()
-        const unscheduled = teachableModules
-          .filter((m) => !scheduledIds.has(Number(m.module_id)))
-          .filter((m) => !needle || `${m.module_code ?? ''} ${m.module_name ?? ''}`.toLowerCase().includes(needle))
-        if (unscheduled.length === 0) return null
-        return (
-          <section className="card p-0 overflow-hidden">
-            <div className="px-5 py-3 border-b border-ink-100 dark:border-ink-700">
-              <h3 className="font-semibold text-[14px] text-ink-900 dark:text-white">
-                Modules without a timetable block ({unscheduled.length})
-              </h3>
-              <p className="text-[11.5px] text-ink-500 mt-0.5">
-                Attendance can still be recorded. Open a module and add its students to the roster.
-              </p>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Code</th>
-                    <th>Module</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {unscheduled.map((m) => (
-                    <tr
-                      key={m.module_id}
-                      className="cursor-pointer hover:bg-ink-50 dark:hover:bg-ink-800/60"
-                      onClick={() => onPickModule(m.module_id, m.module_code ?? '', m.module_name ?? '')}
-                    >
-                      <td className="font-mono text-[12px] font-semibold">{m.module_code ?? '—'}</td>
-                      <td className="text-[12.5px]">{m.module_name ?? '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
-        )
-      })()}
-
       {/* All schedules — one row per teaching block. Mirrors the Module
           scheduling page so admins can see the full timetable plus the
           assigned teacher. Click any row to open that module's roster. */}
@@ -2035,6 +1989,50 @@ function SchedulePicker({
         )}
       </section>
 
+      {/* Teachable modules with no timetable block yet. Attendance still works:
+          open the module and add its students to the roster from the record tab. */}
+      {(() => {
+        const scheduledIds = new Set(allBlocks.map((b) => Number(b.module_id)))
+        const needle = gSearch.trim().toLowerCase()
+        const unscheduled = teachableModules
+          .filter((m) => !scheduledIds.has(Number(m.module_id)))
+          .filter((m) => !needle || `${m.module_code ?? ''} ${m.module_name ?? ''}`.toLowerCase().includes(needle))
+        if (unscheduled.length === 0) return null
+        return (
+          <section className="card p-0 overflow-hidden">
+            <div className="px-5 py-3 border-b border-ink-100 dark:border-ink-700">
+              <h3 className="font-semibold text-[14px] text-ink-900 dark:text-white">
+                Modules without a timetable block ({unscheduled.length})
+              </h3>
+              <p className="text-[11.5px] text-ink-500 mt-0.5">
+                Attendance can still be recorded. Open a module and add its students to the roster.
+              </p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Code</th>
+                    <th>Module</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {unscheduled.map((m) => (
+                    <tr
+                      key={m.module_id}
+                      className="cursor-pointer hover:bg-ink-50 dark:hover:bg-ink-800/60"
+                      onClick={() => onPickModule(m.module_id, m.module_code ?? '', m.module_name ?? '')}
+                    >
+                      <td className="font-mono text-[12px] font-semibold">{m.module_code ?? '—'}</td>
+                      <td className="text-[12.5px]">{m.module_name ?? '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )
+      })()}
     </div>
   )
 }
@@ -2064,6 +2062,7 @@ function EnrollStudentModal({ moduleId, moduleCode, termId, onClose, onSuccess, 
   const debouncedQ = useDebounce(q, 300)
   const [faculty, setFaculty] = useState('')
   const [department, setDepartment] = useState('')
+  const [programme, setProgramme] = useState(programId ? String(programId) : '')
   const [picking, setPicking] = useState<Student | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
 
@@ -2071,22 +2070,28 @@ function EnrollStudentModal({ moduleId, moduleCode, termId, onClose, onSuccess, 
   const studiedSet = useMemo(() => new Set<string>(existingRegnumbers), [existingRegnumbers])
 
   const studentsQ = useQuery({
-    queryKey: ['attendance-students-search', debouncedQ, faculty, department, programId],
+    queryKey: ['attendance-students-search', debouncedQ, faculty, department, programme],
     queryFn: () => attendanceService.searchStudents({
       q: debouncedQ || undefined,
       faculty: faculty || undefined,
       department: department || undefined,
-      std_option: programId ? String(programId) : undefined,
+      std_option: programme || undefined,
     }),
     staleTime: 10_000,
   })
 
-  const statsQ = useQuery({
-    queryKey: ['student-stats-facets'],
-    queryFn: () => studentService.stats(),
+  // Reference catalogue for the cascading filters (no student data).
+  const catalogueQ = useQuery({
+    queryKey: ['attendance-catalogue'],
+    queryFn: () => attendanceService.catalogue(),
     staleTime: 300_000,
   })
-  const facets = statsQ.data?.data?.facets
+  const catalogue = catalogueQ.data?.data
+  // A department belongs to one faculty, a programme to one department.
+  const departmentOptions = (catalogue?.departments ?? [])
+    .filter((d) => !faculty || d.faculty_id === faculty)
+  const programmeOptions = (catalogue?.options ?? [])
+    .filter((o) => (!faculty || o.faculty_id === faculty) && (!department || o.department_id === department))
 
   const regMut = useMutation({
     mutationFn: (student: Student) => {
@@ -2171,7 +2176,7 @@ function EnrollStudentModal({ moduleId, moduleCode, termId, onClose, onSuccess, 
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-12 gap-2">
-          <div className="md:col-span-5 relative group">
+          <div className="md:col-span-3 relative group">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-400 group-focus-within:text-brand transition-colors" />
             <input
               autoFocus
@@ -2185,20 +2190,30 @@ function EnrollStudentModal({ moduleId, moduleCode, termId, onClose, onSuccess, 
             <select
               className="input w-full bg-white dark:bg-ink-900 text-[13px]"
               value={faculty}
-              onChange={(e) => setFaculty(e.target.value)}
+              onChange={(e) => { setFaculty(e.target.value); setDepartment(''); setProgramme('') }}
             >
               <option value="">All Faculties</option>
-              {facets?.faculty?.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
+              {(catalogue?.faculties ?? []).map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
             </select>
           </div>
-          <div className="md:col-span-4">
+          <div className="md:col-span-3">
             <select
               className="input w-full bg-white dark:bg-ink-900 text-[13px]"
               value={department}
-              onChange={(e) => setDepartment(e.target.value)}
+              onChange={(e) => { setDepartment(e.target.value); setProgramme('') }}
             >
               <option value="">All Departments</option>
-              {facets?.department?.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
+              {departmentOptions.map((d) => <option key={d.value} value={d.value}>{d.label}</option>)}
+            </select>
+          </div>
+          <div className="md:col-span-3">
+            <select
+              className="input w-full bg-white dark:bg-ink-900 text-[13px]"
+              value={programme}
+              onChange={(e) => setProgramme(e.target.value)}
+            >
+              <option value="">All Programmes</option>
+              {programmeOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           </div>
         </div>
@@ -2235,9 +2250,9 @@ function EnrollStudentModal({ moduleId, moduleCode, termId, onClose, onSuccess, 
                 <Users className="w-10 h-10 text-ink-200 mx-auto mb-3" />
                 <p className="text-[13px] text-ink-500 font-medium">No students match.</p>
                 <p className="text-[12px] text-ink-400 mt-1">
-                  {programId
-                    ? 'No remaining students in this programme have yet to take this module.'
-                    : 'Pick a programme on the attendance page first to see the cohort.'}
+                  {programme
+                    ? 'No students in this programme are waiting to be added to this module.'
+                    : 'Try a different search or filter.'}
                 </p>
               </div>
             ) : (
