@@ -328,6 +328,11 @@ const NAV_TREE: NavNode[] = [
     ],
     children: [
       {
+        to: "/hr/payroll-system",
+        label: "Payroll System",
+        permissions: [PERMISSIONS.VIEW_PAYROLL, PERMISSIONS.MANAGE_PAYROLL],
+      },
+      {
         to: "/hr/appraisals",
         label: "Appraisals",
         permissions: [PERMISSIONS.VIEW_APPRAISALS, PERMISSIONS.VIEW_HR_EMPLOYEES],

@@ -49,7 +49,6 @@ import PayrollRunsPage from "@/pages/hr/PayrollRunsPage";
 import PayrollRunDetailPage from "@/pages/hr/PayrollRunDetailPage";
 import PayrollSettingsPage from "@/pages/hr/PayrollSettingsPage";
 import EmployeePayrollProfilePage from "@/pages/hr/EmployeePayrollProfilePage";
-import PayrollPhpPage from "@/pages/hr/PayrollPhpPage";
 import PartTimePage from "@/pages/hr/PartTimePage";
 import LeavePhpPage from "@/pages/hr/LeavePhpPage";
 import MyPayslipsPhpPage from "@/pages/hr/MyPayslipsPhpPage";
@@ -448,7 +447,7 @@ function App() {
                 <Route path="/hr/payroll-profile/:employeeId" element={<EmployeePayrollProfilePage />} />
                 <Route path="/hr/part-time" element={<PartTimePage />} />
                 <Route path="/hr/payments" element={<PaymentsPage />} />
-                <Route path="/hr/payroll-system" element={<PayrollPhpPage />} />
+                <Route path="/hr/payroll-system" element={<HrAllInOnePage />} />
               </Route>
 
               {/* ── Leave management — any HR viewer OR leave view/approve role ── */}
