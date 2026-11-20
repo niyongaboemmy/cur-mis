@@ -2256,7 +2256,7 @@ function EnrollStudentModal({ moduleId, moduleCode, termId, onClose, onSuccess, 
                         {isSelected && <Check className="w-3.5 h-3.5" />}
                       </div>
                       <div className="w-10 h-10 rounded-full bg-ink-100 dark:bg-ink-800 text-ink-600 dark:text-ink-400 flex items-center justify-center font-bold text-[13px] border border-ink-200 dark:border-ink-700">
-                        {s.fname[0]}{s.lname[0]}
+                        {(s.fname ?? '').charAt(0)}{(s.lname ?? '').charAt(0)}
                       </div>
                       <div className="min-w-0">
                         <p className="font-bold text-[14px] text-ink-900 dark:text-white truncate">{s.fname} {s.lname}</p>
