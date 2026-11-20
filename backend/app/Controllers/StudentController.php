@@ -1064,7 +1064,7 @@ class StudentController extends BaseController
             'intake', 'acc_year', 'sponsor', 'marital_status', 'spouse',
             'disability', 'father', 'mother', 'reference', 'id_card',
             'country', 'province', 'district', 'sector', 'cell', 'village',
-            'student_state', 'campus',
+            'student_state', 'campus', 'combination', 'learning_mode',
         ];
         foreach ($stringCols as $col) {
             if (array_key_exists($col, $data)) {
@@ -1072,6 +1072,9 @@ class StudentController extends BaseController
                 if ($col === 'campus' && $val !== '') {
                     // Resolve campus name/id to numeric id
                     $resolved = $this->resolveCampusByIdOrName((string)$val);
+                    if ($resolved === false) {
+                        $this->error($response, 'Validation failed', 422, ['campus' => ['Selected campus is invalid.']]);
+                    }
                     $patch[$col] = $resolved ?: null;
                 } else {
                     $patch[$col] = is_string($val) ? trim($val) : $val;
@@ -1112,11 +1115,136 @@ class StudentController extends BaseController
             $patch['department'] = isset($option['department_id']) ? (string)$option['department_id'] : ($data['department'] ?? $student['department']);
         }
 
+        // Fields shown on the details page that live on the admission
+        // application. Written to the application row when the student has one,
+        // and to the student row too where both hold the value (the page prefers
+        // the student row, so both sides must agree or clearing a field would
+        // reveal the old application value again).
+        $applicationId = $this->resolveApplicationId($id);
+        $appPatch      = [];
+        $appOnlyKeys   = [];
+        foreach (self::APPLICATION_FIELDS as $key => [$studentCol, $appCol]) {
+            if (!array_key_exists($key, $data)) {
+                continue;
+            }
+            if ($studentCol === null) {
+                $appOnlyKeys[] = $key;
+            }
+            if ($appCol === null) {
+                continue;
+            }
+            if ($key === 'campus') {
+                // Already resolved to a campus id in the student loop above.
+                $appPatch['campus_id'] = $patch['campus'] ?? null;
+                continue;
+            }
+            $appPatch[$appCol] = $this->normaliseApplicationValue($key, $data[$key]);
+        }
+
+        // Validate application-side values before anything is written.
+        $appErrors = [];
+        if (array_key_exists('mode_of_study', $appPatch) && $appPatch['mode_of_study'] !== null
+            && !in_array($appPatch['mode_of_study'], self::MODE_OF_STUDY_LABELS_KEYS, true)) {
+            $appErrors['mode_of_study'] = ['Select a valid mode of study.'];
+        }
+        if (array_key_exists('graduation_year', $appPatch) && $appPatch['graduation_year'] !== null
+            && ($appPatch['graduation_year'] < 1950 || $appPatch['graduation_year'] > (int)date('Y') + 1)) {
+            $appErrors['graduation_year'] = ['Enter a valid completion year.'];
+        }
+        if (array_key_exists('principal_passes', $appPatch) && $appPatch['principal_passes'] !== null
+            && ($appPatch['principal_passes'] < 0 || $appPatch['principal_passes'] > 99)) {
+            $appErrors['principal_passes'] = ['Enter a valid number of principal passes.'];
+        }
+        if ($appOnlyKeys !== [] && $applicationId === null) {
+            foreach ($appOnlyKeys as $key) {
+                $appErrors[$key] = ['This student has no linked admission application, so this field cannot be saved.'];
+            }
+        }
+        if (!empty($appErrors)) {
+            $this->error($response, 'Validation failed', 422, $appErrors);
+        }
+
+        // mode_of_study is stored as a code on the application and as a label
+        // on the student's learning_mode column.
+        if (array_key_exists('mode_of_study', $data)) {
+            $code = $appPatch['mode_of_study'] ?? null;
+            $patch['learning_mode'] = $code !== null ? self::MODE_OF_STUDY_LABELS[$code] : null;
+        }
+
         if (!empty($patch)) {
             $this->studentModel->update($id, $patch);
         }
 
+        if ($applicationId !== null && $appPatch !== []) {
+            (new StudentApplicationModel())->update($applicationId, $appPatch);
+        }
+
         $this->success($response, null, 'Student updated successfully.');
+    }
+
+    /**
+     * Page key => [student column | null, application column | null].
+     * Keys with a null student column live only on the application.
+     */
+    private const APPLICATION_FIELDS = [
+        'fname'              => ['fname', 'first_name'],
+        'lname'              => ['lname', 'last_name'],
+        'gender'             => ['gender', 'gender'],
+        'birthdate'          => ['birthdate', 'birthdate'],
+        'marital_status'     => ['marital_status', 'marital_status'],
+        'id_card'            => ['id_card', 'national_id'],
+        'nationality'        => ['nationality', 'nationality'],
+        'father'             => ['father', 'father'],
+        'mother'             => ['mother', 'mother'],
+        'country'            => ['country', 'country_of_residence'],
+        'disability'         => ['disability', 'disability'],
+        'phone'              => ['phone', 'phone'],
+        'email'              => ['email', 'email'],
+        'reference_phone'    => [null, 'reference_phone'],
+        'province'           => ['province', 'province'],
+        'district'           => ['district', 'district'],
+        'sector'             => ['sector', 'sector'],
+        'cell'               => ['cell', null],
+        'village'            => ['village', null],
+        'address'            => [null, 'address'],
+        'residence_district' => [null, 'residence_district'],
+        'intake'             => ['intake', 'intake'],
+        'campus'             => ['campus', 'campus_id'],
+        'mode_of_study'      => ['learning_mode', 'mode_of_study'],
+        'combination'        => ['combination', 'combination'],
+        'prev_school'        => [null, 'prev_school'],
+        'prev_qualification' => [null, 'prev_qualification'],
+        'prev_grade'         => [null, 'prev_grade'],
+        'a2_grades'          => [null, 'a2_grades'],
+        'principal_passes'   => [null, 'principal_passes'],
+        'graduation_year'    => [null, 'graduation_year'],
+        'serial_number'      => [null, 'serial_number'],
+    ];
+
+    /** Application mode_of_study codes => labels (matches the admissions forms). */
+    private const MODE_OF_STUDY_LABELS = [
+        1 => 'day',
+        2 => 'evening',
+        3 => 'weekend',
+        4 => 'holiday',
+        5 => 'distance_learning',
+    ];
+    private const MODE_OF_STUDY_LABELS_KEYS = [1, 2, 3, 4, 5];
+
+    /** Trim strings, turn blanks into null, and cast the integer columns. */
+    private function normaliseApplicationValue(string $key, mixed $val): int|string|null
+    {
+        if ($val === null) {
+            return null;
+        }
+        $v = is_string($val) ? trim($val) : $val;
+        if ($v === '') {
+            return null;
+        }
+        return match ($key) {
+            'mode_of_study', 'graduation_year', 'principal_passes' => is_numeric($v) ? (int)$v : null,
+            default => (string)$v,
+        };
     }
 
 

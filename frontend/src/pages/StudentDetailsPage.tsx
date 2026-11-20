@@ -13,6 +13,7 @@ import {
   type ProgramModuleRow,
 } from "@/services/studentService";
 import { authService } from "@/services/authService";
+import userService from "@/services/userService";
 import {
   marksService,
   type HonoursClassification,
@@ -527,7 +528,7 @@ function OverviewTab({
   // Learning mode (Day / Evening / Weekend). Lives on the application as
   // `mode_of_study` and on the legacy `student.program` column — we check
   // both so the chip appears for students without a linked application.
-  const studyMode = cap(pick(app?.mode_of_study, student.program));
+  const studyMode = modeOfStudyLabel(app, student);
 
   return (
     <div className="space-y-6">
@@ -640,47 +641,11 @@ function OverviewTab({
         )}
 
         {app && (
-          <section className="card p-6">
-            <SectionHeader
-              title="Academic Background"
-              sub="Secondary school transcript."
-              icon={GraduationCap}
-            />
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-5 mt-6">
-              <InfoGroup
-                label="Attended Secondary School"
-                value={pick(app?.prev_school)}
-              />
-              <InfoGroup
-                label="Combination / Section"
-                value={pick(app?.combination)}
-              />
-              <InfoGroup label="A2 Grades" value={pick(app?.a2_grades)} />
-              <InfoGroup
-                label="Principal Passes"
-                value={
-                  app?.principal_passes != null
-                    ? String(app.principal_passes)
-                    : null
-                }
-              />
-              <InfoGroup
-                label="Completion Year"
-                value={
-                  app?.graduation_year ? String(app.graduation_year) : null
-                }
-              />
-              <InfoGroup
-                label="Serial Number"
-                value={pick(app?.serial_number)}
-              />
-              <InfoGroup
-                label="Qualification"
-                value={pick(app?.prev_qualification)}
-              />
-              <InfoGroup label="Mean Grade" value={pick(app?.prev_grade)} />
-            </div>
-          </section>
+          <AcademicBackgroundSection
+            student={student}
+            app={app}
+            selfMode={selfMode}
+          />
         )}
       </div>
 
@@ -1367,11 +1332,12 @@ function ContactSection({
   const buildInitial = () => ({
     phone: (pick(student.phone, app?.phone) ?? "") as string,
     email: (pick(student.email, app?.email) ?? "") as string,
+    reference_phone: (pick(app?.reference_phone) ?? "") as string,
   });
   const [form, setForm] = useState(buildInitial);
   useEffect(() => {
-    setForm(buildInitial());  
-  }, [student.phone, student.email, app?.phone, app?.email]);
+    setForm(buildInitial());
+  }, [student.phone, student.email, app?.phone, app?.email, app?.reference_phone]);
 
   const save = useSectionSave(student, selfMode, "Contact");
   const set =
@@ -1386,6 +1352,9 @@ function ContactSection({
       save.mutate({
         phone: form.phone.trim() || null,
         email: form.email.trim() || null,
+        // The reference phone lives on the admission application; only sent
+        // when there is one to store it on.
+        ...(app ? { reference_phone: form.reference_phone.trim() || null } : {}),
       });
     }
   };
@@ -1430,11 +1399,22 @@ function ContactSection({
             icon={Phone}
           />
         )}
-        <InfoGroup
-          label="Reference Person Phone"
-          value={pick(app?.reference_phone)}
-          icon={Phone}
-        />
+        {editing && !selfMode && app ? (
+          <FieldGroup label="Reference Person Phone" icon={Phone}>
+            <TextInput
+              type="tel"
+              value={form.reference_phone}
+              onChange={set("reference_phone")}
+              placeholder="+250 7XX XXX XXX"
+            />
+          </FieldGroup>
+        ) : (
+          <InfoGroup
+            label="Reference Person Phone"
+            value={pick(app?.reference_phone)}
+            icon={Phone}
+          />
+        )}
         <div className="sm:col-span-2">
           {!selfMode && editing ? (
             <FieldGroup label="Email" icon={Mail}>
@@ -1470,9 +1450,180 @@ function ContactSection({
 }
 
 /**
+ * Academic Background — the secondary-school transcript captured on the
+ * admission application. Staff can edit it; students only view it.
+ */
+function AcademicBackgroundSection({
+  student,
+  app,
+  selfMode,
+}: {
+  student: any;
+  app: any;
+  selfMode: boolean;
+}) {
+  const [editing, setEditing] = useState(false);
+
+  const pick = (...vals: any[]) =>
+    vals.find((v) => v !== undefined && v !== null && v !== "") ?? null;
+
+  const buildInitial = () => ({
+    prev_school: (pick(app?.prev_school) ?? "") as string,
+    combination: (pick(app?.combination) ?? "") as string,
+    a2_grades: (pick(app?.a2_grades) ?? "") as string,
+    principal_passes:
+      app?.principal_passes != null ? String(app.principal_passes) : "",
+    graduation_year: app?.graduation_year ? String(app.graduation_year) : "",
+    serial_number: (pick(app?.serial_number) ?? "") as string,
+    prev_qualification: (pick(app?.prev_qualification) ?? "") as string,
+    prev_grade: (pick(app?.prev_grade) ?? "") as string,
+  });
+  const [form, setForm] = useState(buildInitial);
+  useEffect(() => {
+    setForm(buildInitial());
+  }, [app]);
+
+  const save = useSectionSave(student, selfMode, "Academic background");
+  const set =
+    (k: keyof ReturnType<typeof buildInitial>) =>
+    (e: React.ChangeEvent<HTMLInputElement>) =>
+      setForm((f) => ({ ...f, [k]: e.target.value }));
+
+  const handleSave = () =>
+    save.mutate({
+      prev_school: form.prev_school.trim() || null,
+      combination: form.combination.trim() || null,
+      a2_grades: form.a2_grades.trim() || null,
+      principal_passes: form.principal_passes.trim()
+        ? Number(form.principal_passes)
+        : null,
+      graduation_year: form.graduation_year.trim()
+        ? Number(form.graduation_year)
+        : null,
+      serial_number: form.serial_number.trim() || null,
+      prev_qualification: form.prev_qualification.trim() || null,
+      prev_grade: form.prev_grade.trim() || null,
+    });
+
+  useEffect(() => {
+    if (save.isSuccess) setEditing(false);
+  }, [save.isSuccess]);
+
+  const canEdit = !selfMode;
+
+  return (
+    <section className="card p-6">
+      <div className="flex items-start justify-between gap-3">
+        <SectionHeader
+          title="Academic Background"
+          sub="Secondary school transcript."
+          icon={GraduationCap}
+        />
+        {canEdit && !editing && (
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="btn-secondary btn-sm flex items-center gap-1.5 h-7 px-2.5 shrink-0"
+          >
+            <Edit className="w-3.5 h-3.5" />
+            <span>Edit</span>
+          </button>
+        )}
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-5 mt-6">
+        {editing ? (
+          <>
+            <FieldGroup label="Attended Secondary School">
+              <TextInput value={form.prev_school} onChange={set("prev_school")} />
+            </FieldGroup>
+            <FieldGroup label="Combination / Section">
+              <TextInput value={form.combination} onChange={set("combination")} />
+            </FieldGroup>
+            <FieldGroup label="A2 Grades">
+              <TextInput value={form.a2_grades} onChange={set("a2_grades")} />
+            </FieldGroup>
+            <FieldGroup label="Principal Passes">
+              <TextInput
+                type="number"
+                min={0}
+                value={form.principal_passes}
+                onChange={set("principal_passes")}
+              />
+            </FieldGroup>
+            <FieldGroup label="Completion Year">
+              <TextInput
+                type="number"
+                value={form.graduation_year}
+                onChange={set("graduation_year")}
+                placeholder="2020"
+              />
+            </FieldGroup>
+            <FieldGroup label="Serial Number">
+              <TextInput value={form.serial_number} onChange={set("serial_number")} />
+            </FieldGroup>
+            <FieldGroup label="Qualification">
+              <TextInput
+                value={form.prev_qualification}
+                onChange={set("prev_qualification")}
+              />
+            </FieldGroup>
+            <FieldGroup label="Mean Grade">
+              <TextInput value={form.prev_grade} onChange={set("prev_grade")} />
+            </FieldGroup>
+          </>
+        ) : (
+          <>
+            <InfoGroup
+              label="Attended Secondary School"
+              value={pick(app?.prev_school)}
+            />
+            <InfoGroup
+              label="Combination / Section"
+              value={pick(app?.combination)}
+            />
+            <InfoGroup label="A2 Grades" value={pick(app?.a2_grades)} />
+            <InfoGroup
+              label="Principal Passes"
+              value={
+                app?.principal_passes != null
+                  ? String(app.principal_passes)
+                  : null
+              }
+            />
+            <InfoGroup
+              label="Completion Year"
+              value={
+                app?.graduation_year ? String(app.graduation_year) : null
+              }
+            />
+            <InfoGroup label="Serial Number" value={pick(app?.serial_number)} />
+            <InfoGroup
+              label="Qualification"
+              value={pick(app?.prev_qualification)}
+            />
+            <InfoGroup label="Mean Grade" value={pick(app?.prev_grade)} />
+          </>
+        )}
+      </div>
+
+      {editing && (
+        <SectionEditFooter
+          saving={save.isPending}
+          onCancel={() => {
+            setForm(buildInitial());
+            setEditing(false);
+          }}
+          onSave={handleSave}
+        />
+      )}
+    </section>
+  );
+}
+
+/**
  * Residency — province/district/sector/cell/village live on the student
- * record itself, so students can self-edit them. Address and residence
- * district stay read-only (admin-only on the application record).
+ * record; residence district and address live on the application. Staff can
+ * edit all of them; students can self-edit the location fields only.
  */
 function ResidencySection({
   student,
@@ -1494,10 +1645,12 @@ function ResidencySection({
     sector: (pick(student.sector, app?.sector) ?? "") as string,
     cell: (pick(student.cell) ?? "") as string,
     village: (pick(student.village) ?? "") as string,
+    residence_district: (pick(app?.residence_district) ?? "") as string,
+    address: (pick(app?.address) ?? "") as string,
   });
   const [form, setForm] = useState(buildInitial);
   useEffect(() => {
-    setForm(buildInitial());  
+    setForm(buildInitial());
   }, [
     student.province,
     student.district,
@@ -1507,9 +1660,15 @@ function ResidencySection({
     app?.province,
     app?.district,
     app?.sector,
+    app?.residence_district,
+    app?.address,
   ]);
 
   const save = useSectionSave(student, selfMode, "Residency");
+  const set =
+    (k: keyof ReturnType<typeof buildInitial>) =>
+    (e: React.ChangeEvent<HTMLInputElement>) =>
+      setForm((f) => ({ ...f, [k]: e.target.value }));
 
   const handleSave = () =>
     save.mutate({
@@ -1518,6 +1677,13 @@ function ResidencySection({
       sector: form.sector.trim() || null,
       cell: form.cell.trim() || null,
       village: form.village.trim() || null,
+      // Application-held fields: only staff with an application to store them on.
+      ...(!selfMode && app
+        ? {
+            residence_district: form.residence_district.trim() || null,
+            address: form.address.trim() || null,
+          }
+        : {}),
     });
 
   useEffect(() => {
@@ -1592,21 +1758,42 @@ function ResidencySection({
           </>
         )}
 
-        {/* Application-level fields stay read-only — they live on the application record. */}
-        {pick(app?.residence_district) && (
-          <InfoGroup
-            label="Residence District"
-            value={pick(app?.residence_district)}
-          />
-        )}
-        {(pick(app?.address) || !editing) && (
-          <div className="sm:col-span-2">
-            <InfoGroup
-              label="Address"
-              value={pick(app?.address) ?? "Not provided"}
-              icon={MapPin}
-            />
-          </div>
+        {editing && !selfMode && app ? (
+          <>
+            <FieldGroup label="Residence District">
+              <TextInput
+                value={form.residence_district}
+                onChange={set("residence_district")}
+              />
+            </FieldGroup>
+            <div className="sm:col-span-2">
+              <FieldGroup label="Address" icon={MapPin}>
+                <TextInput
+                  value={form.address}
+                  onChange={set("address")}
+                  placeholder="Street / house address"
+                />
+              </FieldGroup>
+            </div>
+          </>
+        ) : (
+          <>
+            {pick(app?.residence_district) && (
+              <InfoGroup
+                label="Residence District"
+                value={pick(app?.residence_district)}
+              />
+            )}
+            {(pick(app?.address) || !editing) && (
+              <div className="sm:col-span-2">
+                <InfoGroup
+                  label="Address"
+                  value={pick(app?.address) ?? "Not provided"}
+                  icon={MapPin}
+                />
+              </div>
+            )}
+          </>
         )}
       </div>
 
@@ -1701,6 +1888,7 @@ function ProgrammeSection({
   selfMode: boolean;
 }) {
   const { levelName: resolveLevelName } = useLevels();
+  const campusOptions = useCampusOptions();
   const [editing, setEditing] = useState(false);
 
   const pick = (...vals: any[]) =>
@@ -1754,11 +1942,13 @@ function ProgrammeSection({
     regnumber: (student.regnumber ?? "") as string,
     student_state: normaliseStudentState(student.student_state),
     sponsor: (student.sponsor ?? "") as string,
+    campus: student.campus ? String(student.campus) : "",
+    mode_of_study: app?.mode_of_study ? String(app.mode_of_study) : "",
   });
   const [form, setForm] = useState(buildInitial);
   const [statusOpen, setStatusOpen] = useState(false);
   useEffect(() => {
-    setForm(buildInitial());  
+    setForm(buildInitial());
   }, [
     student.std_option,
     student.current_level,
@@ -1768,6 +1958,8 @@ function ProgrammeSection({
     student.regnumber,
     student.student_state,
     student.sponsor,
+    student.campus,
+    app?.mode_of_study,
   ]);
 
   const save = useSectionSave(student, selfMode, "Programme details");
@@ -1785,6 +1977,12 @@ function ProgrammeSection({
       registration_date: form.registration_date || null,
       regnumber: form.regnumber.trim() || null,
       sponsor: form.sponsor.trim() || null,
+      ...(selfMode
+        ? {}
+        : {
+            campus: form.campus || null,
+            mode_of_study: form.mode_of_study ? Number(form.mode_of_study) : null,
+          }),
     });
 
   useEffect(() => {
@@ -1898,6 +2096,34 @@ function ProgrammeSection({
             <FieldGroup label="Sponsor">
               <TextInput value={form.sponsor} onChange={set("sponsor")} />
             </FieldGroup>
+            <FieldGroup label="Campus" icon={Building2}>
+              <select
+                value={form.campus}
+                onChange={set("campus")}
+                className={selectInputClass}
+              >
+                <option value="">— Select campus —</option>
+                {campusOptions.map((c) => (
+                  <option key={c.id} value={String(c.id)}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </FieldGroup>
+            <FieldGroup label="Mode of Study" icon={Clock}>
+              <select
+                value={form.mode_of_study}
+                onChange={set("mode_of_study")}
+                className={selectInputClass}
+              >
+                <option value="">— Select mode —</option>
+                {MODE_OF_STUDY_OPTIONS.map((m) => (
+                  <option key={m.value} value={String(m.value)}>
+                    {m.label}
+                  </option>
+                ))}
+              </select>
+            </FieldGroup>
 
             <FieldGroup label="Status">
               {/* Same reason as the modal: changing a status is its own
@@ -1932,12 +2158,15 @@ function ProgrammeSection({
             />
             <InfoGroup
               label="Campus"
-              value={pick(app?.campus_name)}
+              value={
+                campusOptions.find((c) => String(c.id) === String(student.campus))
+                  ?.name ?? pick(app?.campus_name)
+              }
               icon={Building2}
             />
             <InfoGroup
               label="Mode of Study"
-              value={cap(pick(app?.mode_of_study, student.program))}
+              value={modeOfStudyLabel(app, student)}
             />
             <InfoGroup
               label="Intake"
@@ -2500,6 +2729,35 @@ function InfoGroup({
 function cap(s?: string | null): string | null {
   if (!s) return null;
   return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+/** Mode of study codes stored on student_applications.mode_of_study. */
+const MODE_OF_STUDY_OPTIONS: ReadonlyArray<{ value: number; label: string }> = [
+  { value: 1, label: "Day" },
+  { value: 2, label: "Evening" },
+  { value: 3, label: "Weekend" },
+  { value: 4, label: "Holiday" },
+  { value: 5, label: "Distance Learning" },
+];
+
+/** Readable mode of study: the application's code first, then the student's text. */
+function modeOfStudyLabel(app: any, student: any): string | null {
+  const code = Number(app?.mode_of_study);
+  if (app?.mode_of_study != null && app?.mode_of_study !== "" && Number.isFinite(code)) {
+    const opt = MODE_OF_STUDY_OPTIONS.find((o) => o.value === code);
+    if (opt) return opt.label;
+  }
+  return cap(student?.learning_mode ?? student?.program ?? null);
+}
+
+/** Active campus list for the Programme editor. Any authenticated user can read it. */
+function useCampusOptions() {
+  const q = useQuery({
+    queryKey: ["campuses-catalog"],
+    queryFn: () => userService.listAllCampuses(),
+    staleTime: 1000 * 60 * 30,
+  });
+  return (q.data?.data?.campuses ?? []) as Array<{ id: number; name: string }>;
 }
 
 function StudentAvatar({

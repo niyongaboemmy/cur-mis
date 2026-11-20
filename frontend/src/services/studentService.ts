@@ -254,6 +254,21 @@ export interface StudentPayload {
   sector?: string | null
   cell?: string | null
   village?: string | null
+  campus?: string | number | null
+  combination?: string | null
+  /** Application mode-of-study code: 1 Day, 2 Evening, 3 Weekend, 4 Holiday, 5 Distance Learning. */
+  mode_of_study?: number | null
+  /* Fields held on the linked admission application. */
+  reference_phone?: string | null
+  address?: string | null
+  residence_district?: string | null
+  prev_school?: string | null
+  prev_qualification?: string | null
+  prev_grade?: string | null
+  a2_grades?: string | null
+  principal_passes?: number | null
+  graduation_year?: number | null
+  serial_number?: string | null
 }
 
 /** Partial of {@link StudentPayload} for section-by-section admin saves. */
