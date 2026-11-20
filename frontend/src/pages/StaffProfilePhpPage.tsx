@@ -2,7 +2,7 @@
 // Finance Overview hosts its PHP dashboard. The iframe fills the content area
 // under the top bar and beside the sidebar. The negative margins cancel the
 // page gutters from MainLayout.
-const STAFF_PROFILE_URL = "https://cur.ac.rw/umis/documents/payroll/staff_profile.php";
+const STAFF_PROFILE_URL = "https://cur.ac.rw/umis/documents/all_in_one/index.php?aio_m=hr&aio_p=my_profile.php";
 
 export default function StaffProfilePhpPage() {
   return (
