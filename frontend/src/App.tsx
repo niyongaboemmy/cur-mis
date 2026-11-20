@@ -59,7 +59,7 @@ import LeavePhpPage from "@/pages/hr/LeavePhpPage";
 import MyPayslipsPhpPage from "@/pages/hr/MyPayslipsPhpPage";
 import LeaveRequestsPhpPage from "@/pages/hr/LeaveRequestsPhpPage";
 import ContractManagementPage from "@/pages/hr/ContractManagementPage";
-import HrMonitoringDashboard from "@/pages/hr/HrMonitoringDashboard";
+import MonitoringPhpPage from "@/pages/hr/MonitoringPhpPage";
 import PerformanceMonitoringPage from "@/pages/hr/PerformanceMonitoringPage";
 import RecruitmentMonitoringPage from "@/pages/hr/RecruitmentMonitoringPage";
 import EmployeeRelationsMonitoringPage from "@/pages/hr/EmployeeRelationsMonitoringPage";
@@ -421,7 +421,7 @@ function App() {
                 }
               >
                 <Route path="/hr/appraisals" element={<AppraisalPage />} />
-                <Route path="/hr/monitoring" element={<HrMonitoringDashboard />} />
+                <Route path="/hr/monitoring" element={<MonitoringPhpPage />} />
                 <Route path="/hr/monitoring/performance" element={<PerformanceMonitoringPage />} />
                 <Route path="/hr/monitoring/recruitment" element={<RecruitmentMonitoringPage />} />
                 <Route path="/hr/monitoring/relations" element={<EmployeeRelationsMonitoringPage />} />
