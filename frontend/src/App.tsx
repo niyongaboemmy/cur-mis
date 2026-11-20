@@ -49,12 +49,13 @@ import PayrollRunsPage from "@/pages/hr/PayrollRunsPage";
 import PayrollRunDetailPage from "@/pages/hr/PayrollRunDetailPage";
 import PayrollSettingsPage from "@/pages/hr/PayrollSettingsPage";
 import EmployeePayrollProfilePage from "@/pages/hr/EmployeePayrollProfilePage";
+import PayrollPhpPage from "@/pages/hr/PayrollPhpPage";
 import PartTimePage from "@/pages/hr/PartTimePage";
 import LeavePhpPage from "@/pages/hr/LeavePhpPage";
 import MyPayslipsPhpPage from "@/pages/hr/MyPayslipsPhpPage";
 import LeaveRequestsPhpPage from "@/pages/hr/LeaveRequestsPhpPage";
 import ContractManagementPage from "@/pages/hr/ContractManagementPage";
-import HrAllInOnePage from "@/pages/hr/HrAllInOnePage";
+import HrMonitoringDashboard from "@/pages/hr/HrMonitoringDashboard";
 import PerformanceMonitoringPage from "@/pages/hr/PerformanceMonitoringPage";
 import RecruitmentMonitoringPage from "@/pages/hr/RecruitmentMonitoringPage";
 import EmployeeRelationsMonitoringPage from "@/pages/hr/EmployeeRelationsMonitoringPage";
@@ -413,7 +414,7 @@ function App() {
                 }
               >
                 <Route path="/hr/appraisals" element={<AppraisalPage />} />
-                <Route path="/hr/monitoring" element={<HrAllInOnePage />} />
+                <Route path="/hr/monitoring" element={<HrMonitoringDashboard />} />
                 <Route path="/hr/monitoring/performance" element={<PerformanceMonitoringPage />} />
                 <Route path="/hr/monitoring/recruitment" element={<RecruitmentMonitoringPage />} />
                 <Route path="/hr/monitoring/relations" element={<EmployeeRelationsMonitoringPage />} />
@@ -447,7 +448,7 @@ function App() {
                 <Route path="/hr/payroll-profile/:employeeId" element={<EmployeePayrollProfilePage />} />
                 <Route path="/hr/part-time" element={<PartTimePage />} />
                 <Route path="/hr/payments" element={<PaymentsPage />} />
-                <Route path="/hr/payroll-system" element={<HrAllInOnePage />} />
+                <Route path="/hr/payroll-system" element={<PayrollPhpPage />} />
               </Route>
 
               {/* ── Leave management — any HR viewer OR leave view/approve role ── */}

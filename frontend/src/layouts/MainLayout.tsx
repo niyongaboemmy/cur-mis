@@ -333,9 +333,24 @@ const NAV_TREE: NavNode[] = [
         permissions: [PERMISSIONS.VIEW_PAYROLL, PERMISSIONS.MANAGE_PAYROLL],
       },
       {
+        to: "/hr/leave-system",
+        label: "Leave",
+        permissions: [
+          PERMISSIONS.VIEW_HR_EMPLOYEES,
+          PERMISSIONS.VIEW_LEAVE_REQUESTS,
+          PERMISSIONS.MANAGE_LEAVE_REQUESTS,
+          ...LEAVE_STAGE_PERMISSIONS,
+        ],
+      },
+      {
         to: "/hr/appraisals",
         label: "Appraisals",
         permissions: [PERMISSIONS.VIEW_APPRAISALS, PERMISSIONS.VIEW_HR_EMPLOYEES],
+      },
+      {
+        to: "/registrar/report",
+        label: "Academic Reports",
+        permissions: [PERMISSIONS.VIEW_HR_EMPLOYEES],
       },
       // { to: "/hr/attendance", label: "Attendance",         permissions: [PERMISSIONS.VIEW_HR_EMPLOYEES] },
       // { to: "/hr/documents",  label: "Documents",        permissions: [PERMISSIONS.VIEW_HR_EMPLOYEES] },

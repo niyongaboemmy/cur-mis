@@ -1,7 +1,7 @@
 // Hosts the standalone PHP payroll application inside the MIS shell.
 // The iframe fills the whole <main> area: negative margins cancel the page
 // gutters from MainLayout, and h-full uses the column height it provides.
-const PAYROLL_PHP_URL = "https://cur.ac.rw/umis/documents/payroll/payroll.php";
+const PAYROLL_PHP_URL = "https://cur.ac.rw/umis/documents/all_in_one/index.php";
 
 export default function PayrollPhpPage() {
   return (
