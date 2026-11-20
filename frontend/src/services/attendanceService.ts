@@ -253,6 +253,20 @@ export const attendanceService = {
   createSession: (payload: CreateSessionPayload) =>
     api.post<{ id: number }>('/attendance/sessions', payload),
 
+  /** Student lookup for the enrol picker. Uses attendance permissions, not VIEW_STUDENTS. */
+  searchStudents: (params: { q?: string; faculty?: string; department?: string; std_option?: string } = {}) =>
+    api.get<Array<{ id: number; regnumber: string; fname: string; lname: string; student_state: string | null }>>(
+      '/api/attendance/students/search',
+      params as Record<string, unknown>,
+    ),
+
+  /** Put students on a module's roster for a term so attendance can be recorded for them. */
+  enrolRoster: (moduleId: number | string, termId: number | string, regnumbers: string[]) =>
+    api.post<{ added: number; already: number }>(
+      `/api/attendance/modules/${moduleId}/enrol`,
+      { academic_term_id: termId, regnumbers },
+    ),
+
   saveRecords: (id: number | string, payload: SaveRecordsPayload) =>
     api.put<{ saved: number }>(`/api/attendance/sessions/${id}/records`, payload),
 

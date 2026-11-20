@@ -34,6 +34,7 @@ $router->group('/api/attendance', function ($router) {
         $r->get('/overview',                   [AttendanceController::class, 'overview']);
         $r->get('/teachable-modules',          [AttendanceController::class, 'myTeachableModules']);
         $r->get('/scheduled-blocks',           [AttendanceController::class, 'listScheduledBlocks']);
+        $r->get('/students/search',            [AttendanceController::class, 'searchStudents']);
         $r->get('/students/:regnumber/summary',[AttendanceController::class, 'studentSummary']);
         // Numeric-id variant — regnumbers like "STD/2026/22699" have slashes
         // and break the `:regnumber` segment matcher, so the student detail
@@ -48,6 +49,7 @@ $router->group('/api/attendance', function ($router) {
     // Writes (teacher + admin)
     $router->group('', function ($r) {
         $r->post('/sessions',              [AttendanceController::class, 'createSession']);
+        $r->post('/modules/:moduleId/enrol', [AttendanceController::class, 'enrolRoster']);
         $r->post('/sessions/:id/records',   [AttendanceController::class, 'saveRecords']);
         $r->post('/sessions/:id/reopen',   [AttendanceController::class, 'reopenSession']);
         $r->post('/sessions/:id/lock',     [AttendanceController::class, 'toggleLock']);

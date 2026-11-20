@@ -43,7 +43,6 @@ import {
   type TeachableModule,
   type CreateSessionPayload,
 } from '@/services/attendanceService'
-import { moduleScheduleService, moduleRegistrationService } from '@/services/modulesService'
 import { apiClient } from '@/services/api'
 import { studentService } from '@/services/studentService'
 import { academicsMgmtService } from '@/services/academicsMgmtService'
@@ -126,22 +125,8 @@ export default function AttendancePage() {
   })
   const allTeachable = teachableQ.data?.data ?? []
 
-  // Only modules that actually have a teaching block in `module_schedules`
-  // qualify for attendance — irrespective of which term the schedule
-  // belongs to. The user explicitly wants every active schedule visible.
-  const termSchedulesQ = useQuery({
-    queryKey: ['attendance-all-schedules'],
-    queryFn: () => moduleScheduleService.list({}),
-    staleTime: 60_000,
-  })
-  const scheduledModuleIds = useMemo(
-    () => new Set((termSchedulesQ.data?.data ?? []).map((s) => Number(s.module_id))),
-    [termSchedulesQ.data],
-  )
-  const modules = useMemo(
-    () => allTeachable.filter((m) => scheduledModuleIds.has(Number(m.module_id))),
-    [allTeachable, scheduledModuleIds],
-  )
+  // Every module the user can record for qualifies, with or without a timetable block.
+  const modules = allTeachable
 
   const pickedModule = modules.find((m) => m.module_id === moduleId)
     || allTeachable.find((m) => m.module_id === moduleId)
@@ -167,6 +152,7 @@ export default function AttendancePage() {
       <SchedulePicker
         canManage={canManage}
         teachableModuleIds={modules.map((m) => m.module_id)}
+        teachableModules={modules}
         teachableLoading={teachableQ.isLoading}
         programId={programId}
         onChangeProgram={() => setProgramId(0)}
@@ -210,27 +196,15 @@ export default function AttendancePage() {
 
       {tab === 'overview' && <OverviewTab termId={termId} moduleId={moduleId} mineOnly={!canManage && canRecord} />}
       {tab === 'record' && canRecord && (
-        scheduledModuleIds.size > 0 && !scheduledModuleIds.has(moduleId) ? (
-          <section className="card p-6 text-[13px] text-amber-900 bg-amber-50 border-amber-200 dark:bg-amber-900/20 dark:text-amber-100 dark:border-amber-700/60 flex items-start gap-3">
-            <AlertCircle className="w-5 h-5 mt-0.5 shrink-0" />
-            <div>
-              <p className="font-semibold">This module has no teaching block on the timetable.</p>
-              <p className="mt-1 text-[12.5px] opacity-90">
-                Attendance can only be recorded for modules that have a teaching block in <code>module_schedules</code>. Add a schedule under <em>Academics → Scheduling</em>, or pick a different module from the switcher.
-              </p>
-            </div>
-          </section>
-        ) : (
-          <RecordTab
-            termId={termId}
-            pickedModule={pickedModule}
-            initialSessionType={preferredSessionType}
-            initialDate={preferredDate}
-            scopeDayPattern={scopeDayPattern}
-            scopeStartDate={scopeStartDate}
-            scopeEndDate={scopeEndDate}
-          />
-        )
+        <RecordTab
+          termId={termId}
+          pickedModule={pickedModule}
+          initialSessionType={preferredSessionType}
+          initialDate={preferredDate}
+          scopeDayPattern={scopeDayPattern}
+          scopeStartDate={scopeStartDate}
+          scopeEndDate={scopeEndDate}
+        />
       )}
       {tab === 'sessions' && <SessionsTab termId={termId} moduleId={moduleId} canDelete={canRecord} setTab={setTab} />}
     </div>
@@ -1219,7 +1193,7 @@ function RosterEditor({ sessionId, onSaved, externalFilter, compact = false, onB
             )}
             {canRecord && (
               <button className="btn-secondary btn-sm h-9 inline-flex items-center gap-1.5" onClick={() => setShowEnroll(true)}>
-                <UserPlus className="w-3.5 h-3.5" /> Enroll
+                <UserPlus className="w-3.5 h-3.5" /> Add | Enroll Students
               </button>
             )}
           </div>
@@ -1353,7 +1327,7 @@ function RosterEditor({ sessionId, onSaved, externalFilter, compact = false, onB
           <p className="text-[13px]">No students enrolled in this module for this term.</p>
           {canRecord && (
             <button className="btn-primary btn-sm mt-3 inline-flex items-center gap-1.5" onClick={() => setShowEnroll(true)}>
-              <UserPlus className="w-3.5 h-3.5" /> Enroll students
+              <UserPlus className="w-3.5 h-3.5" /> Add | Enroll Students
             </button>
           )}
         </div>
@@ -1783,11 +1757,12 @@ function formatDayPattern(pattern: string | null, dayOfWeek: number | null): str
 
 function SchedulePicker({
   canManage,
-  teachableModuleIds, teachableLoading, programId, onChangeProgram, onPickProgram,
+  teachableModuleIds, teachableModules, teachableLoading, programId, onChangeProgram, onPickProgram,
   onPickModule,
 }: {
   canManage: boolean
   teachableModuleIds: number[]
+  teachableModules: Array<{ module_id: number; module_code?: string | null; module_name?: string | null }>
   teachableLoading: boolean
   programId: number
   onChangeProgram: () => void
@@ -1931,6 +1906,51 @@ function SchedulePicker({
         )}
       </section>
 
+      {/* Teachable modules with no timetable block yet. Attendance still works:
+          open the module and add its students to the roster from the record tab. */}
+      {(() => {
+        const scheduledIds = new Set(allBlocks.map((b) => Number(b.module_id)))
+        const needle = gSearch.trim().toLowerCase()
+        const unscheduled = teachableModules
+          .filter((m) => !scheduledIds.has(Number(m.module_id)))
+          .filter((m) => !needle || `${m.module_code ?? ''} ${m.module_name ?? ''}`.toLowerCase().includes(needle))
+        if (unscheduled.length === 0) return null
+        return (
+          <section className="card p-0 overflow-hidden">
+            <div className="px-5 py-3 border-b border-ink-100 dark:border-ink-700">
+              <h3 className="font-semibold text-[14px] text-ink-900 dark:text-white">
+                Modules without a timetable block ({unscheduled.length})
+              </h3>
+              <p className="text-[11.5px] text-ink-500 mt-0.5">
+                Attendance can still be recorded. Open a module and add its students to the roster.
+              </p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Code</th>
+                    <th>Module</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {unscheduled.map((m) => (
+                    <tr
+                      key={m.module_id}
+                      className="cursor-pointer hover:bg-ink-50 dark:hover:bg-ink-800/60"
+                      onClick={() => onPickModule(m.module_id, m.module_code ?? '', m.module_name ?? '')}
+                    >
+                      <td className="font-mono text-[12px] font-semibold">{m.module_code ?? '—'}</td>
+                      <td className="text-[12.5px]">{m.module_name ?? '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )
+      })()}
+
       {/* All schedules — one row per teaching block. Mirrors the Module
           scheduling page so admins can see the full timetable plus the
           assigned teacher. Click any row to open that module's roster. */}
@@ -2047,31 +2067,15 @@ function EnrollStudentModal({ moduleId, moduleCode, termId, onClose, onSuccess, 
   const [picking, setPicking] = useState<Student | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
 
-  // All historical registrations for this module (any term, any status) —
-  // used to hide students who have already studied / are studying it. Active
-  // session roster is also excluded via `existingRegnumbers`.
-  const moduleRegsQ = useQuery({
-    queryKey: ['attendance-module-regs-all', moduleId],
-    queryFn: () => moduleRegistrationService.list({ module_id: moduleId }),
-    staleTime: 30_000,
-  })
-  const studiedSet = useMemo(() => {
-    const set = new Set<string>(existingRegnumbers)
-    for (const r of moduleRegsQ.data?.data ?? []) {
-      if (r.student_regnumber) set.add(r.student_regnumber)
-    }
-    return set
-  }, [moduleRegsQ.data, existingRegnumbers])
+  // Students already on this module's roster are hidden from the picker.
+  const studiedSet = useMemo(() => new Set<string>(existingRegnumbers), [existingRegnumbers])
 
   const studentsQ = useQuery({
     queryKey: ['attendance-students-search', debouncedQ, faculty, department, programId],
-    queryFn: () => studentService.list({
+    queryFn: () => attendanceService.searchStudents({
       q: debouncedQ || undefined,
-      per_page: 200,
       faculty: faculty || undefined,
       department: department || undefined,
-      // Admin-picked programme at the page level — scopes the cohort by default.
-      // Faculty/department/search filters are additive on top of this scope.
       std_option: programId ? String(programId) : undefined,
     }),
     staleTime: 10_000,
@@ -2088,12 +2092,7 @@ function EnrollStudentModal({ moduleId, moduleCode, termId, onClose, onSuccess, 
     mutationFn: (student: Student) => {
       const reg = student.regnumber || (student as any).student_regnumber
       if (!reg) throw new Error('Student has no registration number.')
-      return moduleRegistrationService.create({
-        module_id: moduleId,
-        academic_term_id: termId,
-        student_regnumber: reg,
-        status: 'registered',
-      })
+      return attendanceService.enrolRoster(moduleId, termId, [reg])
     },
     onSuccess: (res) => {
       if (!res.success) return toast.error(res.message || 'Enrollment failed.')
@@ -2104,20 +2103,16 @@ function EnrollStudentModal({ moduleId, moduleCode, termId, onClose, onSuccess, 
   })
 
   const bulkMut = useMutation({
-    mutationFn: () => moduleRegistrationService.bulkRegister({
-      module_id: moduleId,
-      academic_term_id: termId,
-      student_regnumbers: Array.from(selected),
-    }),
-    onSuccess: (res: any) => {
+    mutationFn: () => attendanceService.enrolRoster(moduleId, termId, Array.from(selected)),
+    onSuccess: (res) => {
       if (!res.success) return toast.error(res.message || 'Bulk enrollment failed.')
-      toast.success(`${res.data.created} students enrolled successfully.`)
+      toast.success(res.message || 'Students enrolled.')
       onSuccess()
     },
     onError: (err: any) => toast.error(err?.response?.data?.message || 'Bulk enrollment failed.'),
   })
 
-  const allStudents = studentsQ.data?.data?.data ?? []
+  const allStudents = (studentsQ.data?.data ?? []) as Student[]
   // Hide anyone who already studied or is registered for this module — the
   // user wants a list of "students in the programme who have NOT studied
   // this module". Filtering client-side keeps the API contract narrow.
@@ -2157,7 +2152,7 @@ function EnrollStudentModal({ moduleId, moduleCode, termId, onClose, onSuccess, 
           <div className="flex flex-col gap-0.5">
             <h5 className="text-[14px] font-bold text-ink-900 dark:text-white">Find and select students</h5>
             <p className="text-[12px] text-ink-500">
-              Showing students in the selected programme who haven't taken this module yet. Add filters or a search if you want to narrow further.
+              Search for students and add them to this module's roster. Students already on the roster are hidden.
               {hiddenCount > 0 && (
                 <span className="ml-1 text-ink-400">({hiddenCount} already enrolled or completed — hidden)</span>
               )}

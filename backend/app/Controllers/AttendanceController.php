@@ -218,9 +218,9 @@ class AttendanceController extends BaseController
         $termId = (int) ($request->query('academic_term_id') ?? 0);
 
         if ($this->hasPerm($request, Permissions::MANAGE_ATTENDANCE)) {
-            // Admins see every module that has at least one teacher assigned
-            // (optionally scoped to the chosen term) — NOT the full catalog,
-            // because recording for modules no one teaches makes no sense.
+            // Admins see every active module, whether or not it has a teacher or a
+            // timetable block, so attendance can be started and students enrolled
+            // for any of them. Teacher names are shown where assigned.
             $sql = "SELECT DISTINCT m.module_id, m.module_code, m.module_name, m.level,
                            (SELECT s.first_name  FROM module_assignments ma2
                               LEFT JOIN staff s ON s.id = ma2.staff_id
@@ -233,17 +233,15 @@ class AttendanceController extends BaseController
                 . ($termId > 0 ? " AND ma3.academic_term_id = ?" : "")
                 . " ORDER BY ma3.role ASC, ma3.id ASC LIMIT 1) AS teacher_last_name
                     FROM modules m
-                    JOIN module_assignments ma ON ma.module_id = m.module_id
                     WHERE m.status = 'active'"
                 // Dean / HOD / department-locked: only the modules in their departments.
                 . \App\Services\AcademicScopeService::moduleClause((array)($request->param('_auth_user') ?? []), 'm.module_id')
-                . ($termId > 0 ? " AND ma.academic_term_id = ?" : "")
                 . " ORDER BY m.module_code ASC
-                    LIMIT 500";
+                    LIMIT 1000";
             $bindings = [];
             if ($termId > 0) {
-                // Three placeholders above use the same term id
-                $bindings = [$termId, $termId, $termId];
+                // The two teacher-name subqueries use the term id.
+                $bindings = [$termId, $termId];
             }
             $rows = $this->db->fetchAll($sql, $bindings);
         } else {
@@ -1191,5 +1189,119 @@ class AttendanceController extends BaseController
         }
         $html = AttendanceReportPdf::buildModuleHtml($module, $termLabel, $sessions, $studentSummary, $totals);
         AttendanceReportPdf::streamPdf($html, "attendance-{$code}-{$stamp}.pdf");
+    }
+    /**
+     * GET /api/attendance/students/search?q=&faculty=&department=&std_option=
+     *
+     * Student lookup for the enrol picker. Gated by the attendance permissions
+     * rather than VIEW_STUDENTS, so a lecturer can add students to a module
+     * they teach without being able to browse the whole student register.
+     */
+    public function searchStudents(Request $request, Response $response): never
+    {
+        $q          = trim((string) ($request->query('q') ?? ''));
+        $faculty    = trim((string) ($request->query('faculty') ?? ''));
+        $department = trim((string) ($request->query('department') ?? ''));
+        $stdOption  = trim((string) ($request->query('std_option') ?? ''));
+
+        $where  = [];
+        $params = [];
+        if ($q !== '') {
+            $like = '%' . $q . '%';
+            $where[] = "(st.regnumber LIKE ? OR st.fname LIKE ? OR st.lname LIKE ? OR CONCAT(st.fname, ' ', st.lname) LIKE ?)";
+            array_push($params, $like, $like, $like, $like);
+        }
+        if ($faculty !== '')    { $where[] = 'st.faculty = ?';    $params[] = $faculty; }
+        if ($department !== '') { $where[] = 'st.department = ?'; $params[] = $department; }
+        if ($stdOption !== '')  { $where[] = 'st.std_option = ?'; $params[] = $stdOption; }
+        $whereSql = $where ? 'WHERE ' . implode(' AND ', $where) : '';
+
+        $rows = $this->db->fetchAll(
+            "SELECT st.id, st.regnumber, st.fname, st.lname, st.student_state
+             FROM `student` st
+             {$whereSql}
+             ORDER BY st.lname, st.fname
+             LIMIT 100",
+            $params
+        );
+        $this->success($response, $rows);
+    }
+
+    /**
+     * POST /api/attendance/modules/:moduleId/enrol
+     *
+     * Body: { academic_term_id: int, regnumbers: string[] }
+     *
+     * Puts students on a module's roster for a term so attendance can be
+     * recorded for them, without a timetable entry or a registrar's action.
+     * Same scope as recording: the caller must be allowed to record for the
+     * module. A student who previously dropped the module is reactivated.
+     */
+    public function enrolRoster(Request $request, Response $response): never
+    {
+        $moduleId = (int) $request->param('moduleId');
+        if ($moduleId <= 0) {
+            $this->error($response, 'A module id is required.', 422);
+        }
+        $this->ensureCanRecordForModule($request, $response, $moduleId);
+
+        $data   = $request->body();
+        $termId = (int) ($data['academic_term_id'] ?? 0);
+        if ($termId <= 0 || !$this->db->fetchOne("SELECT id FROM `academic_terms` WHERE id = ? LIMIT 1", [$termId])) {
+            $this->error($response, 'Validation failed', 422, ['academic_term_id' => ['Select a valid academic term.']]);
+        }
+
+        $regs = is_array($data['regnumbers'] ?? null) ? $data['regnumbers'] : [];
+        $clean = [];
+        foreach ($regs as $r) {
+            $reg = trim((string) $r);
+            if ($reg !== '') {
+                $clean[$reg] = true;
+            }
+        }
+        if ($clean === []) {
+            $this->error($response, 'Validation failed', 422, ['regnumbers' => ['Select at least one student.']]);
+        }
+
+        // Check every registration number before writing anything.
+        foreach (array_keys($clean) as $reg) {
+            if (!$this->db->fetchOne("SELECT 1 AS ok FROM `student` WHERE regnumber = ? LIMIT 1", [$reg])) {
+                $this->error($response, "No student found with registration number \"{$reg}\".", 422);
+            }
+        }
+
+        $added   = 0;
+        $already = 0;
+        foreach (array_keys($clean) as $reg) {
+            $has = $this->db->fetchOne(
+                "SELECT id, status FROM `module_registrations`
+                  WHERE module_id = ? AND student_regnumber = ? AND academic_term_id = ? LIMIT 1",
+                [$moduleId, $reg, $termId]
+            );
+            if ($has) {
+                if (($has['status'] ?? '') === 'dropped') {
+                    $this->db->execute(
+                        "UPDATE `module_registrations` SET status = 'registered' WHERE id = ?",
+                        [(int) $has['id']]
+                    );
+                    $added++;
+                } else {
+                    $already++;
+                }
+                continue;
+            }
+            $this->db->execute(
+                "INSERT INTO `module_registrations` (module_id, student_regnumber, academic_term_id, status)
+                 VALUES (?, ?, ?, 'registered')",
+                [$moduleId, $reg, $termId]
+            );
+            $added++;
+        }
+
+        $msg = "Enrolled {$added} student(s).";
+        if ($already > 0) {
+            $msg .= " {$already} already on the roster.";
+        }
+        $this->success($response, ['added' => $added, 'already' => $already], $msg);
     }
 }
