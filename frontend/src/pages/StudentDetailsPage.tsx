@@ -180,6 +180,49 @@ export default function StudentDetailsPage({
   });
 
   const navigate = useNavigate();
+  const qc = useQueryClient();
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+
+  // Step 1: check for marks / paid money before offering a permanent delete.
+  const deleteCheckMut = useMutation({
+    mutationFn: () => studentService.deleteCheck(Number(id)),
+    onSuccess: (res) => {
+      const d = res.data;
+      if (!d) return;
+      if (!d.can_delete) {
+        const reasons: string[] = [];
+        if (d.blockers.marks > 0)
+          reasons.push(`${d.blockers.marks} module mark(s) recorded`);
+        if (d.blockers.paid_payments > 0)
+          reasons.push(`${d.blockers.paid_payments} confirmed payment(s)`);
+        if (d.blockers.paid_invoices > 0)
+          reasons.push(`${d.blockers.paid_invoices} paid invoice(s)`);
+        toast.error(
+          `Cannot delete this student: ${reasons.join(", ")}.`,
+        );
+        return;
+      }
+      setConfirmDeleteOpen(true);
+    },
+    onError: (e: any) =>
+      toast.error(e?.response?.data?.message ?? "Could not check this student."),
+  });
+
+  // Step 2: the actual permanent delete, only reached after the check passed.
+  const deleteStudentMut = useMutation({
+    mutationFn: () => studentService.remove(Number(id)),
+    onSuccess: () => {
+      toast.success("Student deleted permanently.");
+      setConfirmDeleteOpen(false);
+      qc.invalidateQueries({ queryKey: ["students"] });
+      qc.invalidateQueries({ queryKey: ["student-stats"] });
+      navigate(backUrl);
+    },
+    onError: (e: any) => {
+      setConfirmDeleteOpen(false);
+      toast.error(e?.response?.data?.message ?? "Delete failed.");
+    },
+  });
 
   const statsQ = useQuery({
     queryKey: ["student-stats"],
@@ -277,6 +320,29 @@ export default function StudentDetailsPage({
                   <CheckCircle className="w-3.5 h-3.5" />
                   <span>Document Checklist</span>
                 </button>
+                <button
+                  onClick={() => deleteCheckMut.mutate()}
+                  disabled={deleteCheckMut.isPending}
+                  className="btn-secondary btn-sm flex items-center gap-1.5 h-7 px-2.5 text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
+                  title="Permanently delete this student (only if no marks and no paid money)"
+                >
+                  {deleteCheckMut.isPending ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Trash2 className="w-3.5 h-3.5" />
+                  )}
+                  <span>Delete permanently</span>
+                </button>
+                <ConfirmDialog
+                  open={confirmDeleteOpen}
+                  onClose={() => setConfirmDeleteOpen(false)}
+                  onConfirm={() => deleteStudentMut.mutate()}
+                  title="Delete student permanently?"
+                  message={`${student.fname} ${student.lname} (${student.regnumber || "no regnumber"}) has no marks and no paid money. Delete the record permanently? This cannot be undone.`}
+                  confirmLabel="Delete permanently"
+                  variant="danger"
+                  loading={deleteStudentMut.isPending}
+                />
               </>
             )}
           </div>

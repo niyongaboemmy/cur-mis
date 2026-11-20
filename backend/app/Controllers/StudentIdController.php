@@ -11,6 +11,7 @@ use App\Models\StudentIdModel;
 use App\Helpers\DocumentHelper;
 use App\Helpers\FrontendUrl;
 use App\Helpers\StudentIdCardHelper;
+use App\Services\CampusScopeService;
 use App\Services\SystemLogService;
 
 /**
@@ -47,6 +48,11 @@ class StudentIdController extends BaseController
             'year'      => (int) ($request->query('year') ?? 0),
             'campus'    => (string) ($request->query('campus') ?? ''),
             'option_id' => (int) ($request->query('option_id') ?? 0),
+            'faculty'       => (string) ($request->query('faculty') ?? ''),
+            'department'    => (string) ($request->query('department') ?? ''),
+            'learning_mode' => (string) ($request->query('learning_mode') ?? ''),
+            'category'      => (string) ($request->query('category') ?? ''),
+            'campus_scope' => CampusScopeService::studentCondition((array) $request->param('_auth_user'), 's.campus'),
         ], $page, $perPage);
 
         $total = $result['total'];
@@ -91,6 +97,10 @@ class StudentIdController extends BaseController
         $failed = [];
 
         foreach ($ids as $studentId) {
+            if (!$this->studentInScope($actor, $studentId)) {
+                $failed[] = ['student_id' => $studentId, 'reason' => 'Student not found.'];
+                continue;
+            }
             $student = $this->db->fetchOne(
                 'SELECT id, regnumber FROM `student` WHERE id = ? LIMIT 1',
                 [$studentId]
@@ -152,6 +162,9 @@ class StudentIdController extends BaseController
         if ($studentId <= 0) {
             $this->error($response, 'student_id is required.', 422);
         }
+        if (!$this->studentInScope($actor, $studentId)) {
+            $this->error($response, 'Student not found.', 404);
+        }
 
         $student = $this->db->fetchOne(
             'SELECT id, regnumber FROM `student` WHERE id = ? LIMIT 1',
@@ -190,6 +203,9 @@ class StudentIdController extends BaseController
     public function history(Request $request, Response $response): never
     {
         $studentId = (int) $request->param('id');
+        if (!$this->studentInScope((array) $request->param('_auth_user'), $studentId)) {
+            $this->error($response, 'Student not found.', 404);
+        }
         $this->success($response, [
             'active'  => $this->model->activeForStudent($studentId) ?: null,
             'history' => $this->model->historyForStudent($studentId),
@@ -227,6 +243,9 @@ class StudentIdController extends BaseController
     public function card(Request $request, Response $response): never
     {
         $studentId = (int) $request->param('id');
+        if (!$this->studentInScope((array) $request->param('_auth_user'), $studentId)) {
+            $this->error($response, 'Student not found.', 404);
+        }
         $card = $this->model->activeForStudent($studentId);
         if (!$card) {
             $this->error($response, 'No active ID card. Issue a card first.', 404);
@@ -310,6 +329,9 @@ class StudentIdController extends BaseController
         $items      = [];
 
         foreach ($ids as $studentId) {
+            if (!$this->studentInScope((array) $request->param('_auth_user'), $studentId)) {
+                continue;
+            }
             $card = $this->model->activeForStudent($studentId);
             if (!$card) {
                 continue;
@@ -356,7 +378,7 @@ class StudentIdController extends BaseController
         $id    = (int) $request->param('id');
 
         $card = $this->model->find($id);
-        if (!$card) {
+        if (!$card || !$this->studentInScope($actor, (int) $card['student_id'])) {
             $this->error($response, 'Card not found.', 404);
         }
 
@@ -381,6 +403,23 @@ class StudentIdController extends BaseController
      *   2. the Origin / Referer of the printing request (so dev/staging just work)
      *   3. a sane production default.
      */
+    /**
+     * True when a campus-locked actor may act on this student (their campuses only).
+     * Unrestricted users always pass.
+     */
+    private function studentInScope(array $actor, int $studentId): bool
+    {
+        $cond = CampusScopeService::studentCondition($actor, 's.campus');
+        if ($cond === null) {
+            return true;
+        }
+        $row = $this->db->fetchOne(
+            "SELECT s.id FROM `student` s WHERE s.id = ? AND {$cond[0]} LIMIT 1",
+            array_merge([$studentId], $cond[1])
+        );
+        return !empty($row);
+    }
+
     private function verifyUrl(string $barcode, Request $request): string
     {
         return FrontendUrl::base($request) . '/verify/student?code=' . rawurlencode($barcode);

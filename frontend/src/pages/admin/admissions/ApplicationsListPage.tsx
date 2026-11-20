@@ -27,10 +27,10 @@ const STATUS_LABEL: Record<string, string> = {
   documents_verified:     'Docs verified',
   documents_rejected:     'Docs rejected',
   requested_changes:      'Changes requested',
-  offered:                'Offered',
+  offered:                'Accepted',
   offer_accepted:         'Fee paid',
   offer_declined:         'Declined',
-  enrolled:               'Enrolled',
+  enrolled:               'Admitted',
   withdrawn:              'Withdrawn',
   draft:                  'Draft',
 }
@@ -43,6 +43,7 @@ const STATUS_LABEL: Record<string, string> = {
 const PENDING_FILTER = 'pending' as const       // submitted OR documents_under_review — matches the "Pending" tile.
 const IN_REVIEW_FILTER = 'in_review' as const   // documents_under_review OR documents_verified — matches the "In Review" tile.
 const OFFERS_FILTER = 'offers_queue' as const   // offered OR offer_accepted — matches the "Offers" tile.
+const ENROLLED_QUEUE_FILTER = 'enrolled_queue' as const // enrolled OR already linked to a student record — matches the "Enrolled" tile.
 const ACTION_FILTER = 'action_needed' as const  // documents_rejected OR requested_changes — matches the "Action" tile.
 const WITHDRAWN_FILTER = ApplicationStatus.WITHDRAWN as const
 const OFFER_DECLINED_FILTER = ApplicationStatus.OFFER_DECLINED as const
@@ -52,17 +53,18 @@ const STATUSES: { value: string; label: string }[] = [
   // Pseudo-statuses surfaced first so the dropdown can reproduce every tile.
   { value: PENDING_FILTER,                           label: 'Pending (queue)' },
   { value: IN_REVIEW_FILTER,                         label: 'In review (queue)' },
-  { value: OFFERS_FILTER,                            label: 'Offers (queue)' },
+  { value: OFFERS_FILTER,                            label: 'Accepted (queue)' },
   { value: ACTION_FILTER,                            label: 'Action needed (queue)' },
   { value: ApplicationStatus.SUBMITTED,              label: 'Submitted only' },
   { value: ApplicationStatus.DOCUMENTS_UNDER_REVIEW, label: 'Docs under review' },
   { value: ApplicationStatus.DOCUMENTS_VERIFIED,     label: 'Docs verified' },
   { value: ApplicationStatus.DOCUMENTS_REJECTED,     label: 'Docs rejected' },
   { value: ApplicationStatus.REQUESTED_CHANGES,      label: 'Changes requested' },
-  { value: ApplicationStatus.OFFERED,                label: 'Offered' },
+  { value: ApplicationStatus.OFFERED,                label: 'Accepted' },
   { value: ApplicationStatus.OFFER_ACCEPTED,         label: 'Fee paid' },
   { value: ApplicationStatus.OFFER_DECLINED,         label: 'Declined' },
-  { value: ApplicationStatus.ENROLLED,               label: 'Enrolled' },
+  { value: ENROLLED_QUEUE_FILTER,                    label: 'Admitted (incl. linked students)' },
+  { value: ApplicationStatus.ENROLLED,               label: 'Admitted (status only)' },
   { value: ApplicationStatus.WITHDRAWN,              label: 'Withdrawn' },
 ]
 
@@ -106,7 +108,7 @@ export default function ApplicationsListPage() {
   // documents_under_review) — that's the full active queue admins act
   // on first, not just the very first stage.
   const [status, setStatus] = useState<
-    ApplicationStatus | typeof PENDING_FILTER | typeof IN_REVIEW_FILTER | typeof OFFERS_FILTER | typeof ACTION_FILTER | ''
+    ApplicationStatus | typeof PENDING_FILTER | typeof IN_REVIEW_FILTER | typeof OFFERS_FILTER | typeof ACTION_FILTER | typeof ENROLLED_QUEUE_FILTER | ''
   >(PENDING_FILTER)
   const [intake, setIntake] = useState('')
   // Campus is no longer set from this page (global topbar + role flag own
@@ -170,7 +172,10 @@ export default function ApplicationsListPage() {
     const pending = submitted + (counts.documents_under_review ?? 0)
     const inReview = (counts.documents_under_review ?? 0) + (counts.documents_verified ?? 0)
     const offers = (counts.offered ?? 0) + (counts.offer_accepted ?? 0)
-    const enrolled = counts.enrolled ?? 0
+    // Enrolled = status enrolled + applicants already linked to a student
+    // record (same set the list filter returns). Falls back to the status
+    // count until the stats response carries it.
+    const enrolled = (statsQ.data?.data as any)?.enrolled_queue_count ?? counts.enrolled ?? 0
     const actionNeeded = (counts.documents_rejected ?? 0) + (counts.requested_changes ?? 0)
     const withdrawn = counts.withdrawn ?? 0
     const offerDeclined = counts.offer_declined ?? 0
@@ -308,17 +313,17 @@ export default function ApplicationsListPage() {
               onClick={() => { setStatus(IN_REVIEW_FILTER); setPage(1) }}
             />
             <StatTile
-              icon={Sparkles} label="Offers" value={stats.offers}
+              icon={Sparkles} label="Accepted" value={stats.offers}
               accent="bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
               highlight={stats.offers > 0}
               active={status === OFFERS_FILTER}
               onClick={() => { setStatus(OFFERS_FILTER); setPage(1) }}
             />
             <StatTile
-              icon={GraduationCap} label="Enrolled" value={stats.enrolled}
+              icon={GraduationCap} label="Admitted" value={stats.enrolled}
               accent="bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
-              active={status === ApplicationStatus.ENROLLED}
-              onClick={() => { setStatus(ApplicationStatus.ENROLLED); setPage(1) }}
+              active={status === ENROLLED_QUEUE_FILTER}
+              onClick={() => { setStatus(ENROLLED_QUEUE_FILTER); setPage(1) }}
             />
             <StatTile
               icon={AlertCircle} label="Action" value={stats.actionNeeded}

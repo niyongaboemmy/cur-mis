@@ -20,10 +20,13 @@ import ServiceCatalogManagementPage from "@/pages/admin/ServiceCatalogManagement
 import PermissionsManagementPage from "@/pages/admin/PermissionsManagementPage";
 import UsersManagementPage from "@/pages/admin/UsersManagementPage";
 import AcademicScopePage from "@/pages/admin/AcademicScopePage";
+import LecturerPlacementPage from "@/pages/admin/LecturerPlacementPage";
+import MyStudentsPage from "@/pages/teaching/MyStudentsPage";
 // University Modules
 import StudentsPage from "@/pages/StudentsPage";
 import StudentDetailsPage from "@/pages/StudentDetailsPage";
 import UserProfilePage from "@/pages/UserProfilePage";
+import StaffProfilePhpPage from "@/pages/StaffProfilePhpPage";
 import DocumentGenerationPage from "@/pages/DocumentGenerationPage";
 import AttendancePage from "@/pages/AttendancePage";
 
@@ -229,7 +232,10 @@ function App() {
                 <Route path="/dashboard" element={<AdminDashboardPage />} />
               </Route>
               <Route path="/home" element={<HomePage />} />
-              <Route path="/profile" element={<UserProfilePage />} />
+              <Route path="/lecturers" element={<LecturerPlacementPage />} />
+              <Route path="/my-students" element={<MyStudentsPage />} />
+              <Route path="/profile" element={<StaffProfilePhpPage />} />
+              <Route path="/account" element={<UserProfilePage />} />
               <Route path="/my/service-requests" element={<MyServiceRequestsPage />} />
 
               {/* ── Help Centre ── */}

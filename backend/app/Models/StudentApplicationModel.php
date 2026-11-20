@@ -6,6 +6,15 @@ namespace App\Models;
 
 class StudentApplicationModel extends BaseModel
 {
+    /**
+     * "Enrolled" as the admissions list counts it: marked enrolled, OR already
+     * given a registration number (sa.enrolled_student_id, written by
+     * ApplicationService at enrolment) while not withdrawn, declined or a draft.
+     * Used by the list filter and the Enrolled stat tile so both agree.
+     * Expects the table aliased as `sa`.
+     */
+    public const ENROLLED_QUEUE_SQL = "(sa.status = 'enrolled' OR (sa.status NOT IN ('draft', 'withdrawn', 'offer_declined') AND sa.enrolled_student_id IS NOT NULL AND sa.enrolled_student_id <> ''))";
+
     protected string $table    = 'student_applications';
     protected array  $fillable = [
         'application_number',
@@ -163,6 +172,9 @@ class StudentApplicationModel extends BaseModel
                 $conditions[] = "sa.status IN ('offered', 'offer_accepted')";
             } elseif ($filters['status'] === 'action_needed') {
                 $conditions[] = "sa.status IN ('documents_rejected', 'requested_changes')";
+            } elseif ($filters['status'] === 'enrolled_queue') {
+                // Enrolled, plus applicants who already have a student record.
+                $conditions[] = self::ENROLLED_QUEUE_SQL;
             } else {
                 $conditions[] = 'sa.status = ?';
                 $bindings[]   = $filters['status'];

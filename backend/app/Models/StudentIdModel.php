@@ -88,6 +88,13 @@ class StudentIdModel extends BaseModel
             $params[] = $campus;
         }
 
+        // Campus-locked staff: only their campuses (CampusScopeService::studentCondition).
+        // Null when the user is unrestricted.
+        if (is_array($filters['campus_scope'] ?? null)) {
+            $where[] = $filters['campus_scope'][0];
+            array_push($params, ...$filters['campus_scope'][1]);
+        }
+
         // Year of the active card's issue date. Students with no active card
         // have no issue year, so they drop out of a year-filtered list.
         $year = (int) ($filters['year'] ?? 0);
@@ -100,6 +107,35 @@ class StudentIdModel extends BaseModel
         if ($optionId > 0) {
             $where[] = 's.std_option = ?';
             $params[] = $optionId;
+        }
+
+        // Academic filters for the ID-card workspace. Same columns and matching
+        // as the Students list: faculty/department are catalogue ids stored on
+        // `student`, learning_mode is the Day/Evening/Weekend/Holiday column.
+        foreach (['faculty' => 's.faculty', 'department' => 's.department'] as $key => $column) {
+            $value = trim((string) ($filters[$key] ?? ''));
+            if ($value !== '') {
+                $where[] = "{$column} = ?";
+                $params[] = $value;
+            }
+        }
+
+        $learningMode = trim((string) ($filters['learning_mode'] ?? ''));
+        if ($learningMode !== '') {
+            $where[] = 'LOWER(TRIM(s.learning_mode)) = LOWER(?)';
+            $params[] = $learningMode;
+        }
+
+        // Undergraduate / postgraduate, matching the legacy spellings the
+        // Students list accepts ("under graduate", "post graduate").
+        $categoryVariants = match (strtolower(trim((string) ($filters['category'] ?? '')))) {
+            'undergraduate' => ['undergraduate', 'under graduate'],
+            'postgraduate'  => ['postgraduate', 'post graduate'],
+            default         => [],
+        };
+        if ($categoryVariants !== []) {
+            $where[] = 'LOWER(TRIM(s.category)) IN (' . implode(',', array_fill(0, count($categoryVariants), '?')) . ')';
+            array_push($params, ...$categoryVariants);
         }
 
         // The active card, if any — LIMIT 1 inside a correlated subquery keeps

@@ -119,6 +119,10 @@ const SCOPED_HIDDEN_NAV_IDS = new Set([
 
 const NAV_TREE: NavNode[] = [
   { id: "home", label: "Home", icon: Home, to: "/" },
+  // Staff profile (account menu target). Students and applicants use their own portal profile.
+  { id: "my-profile", label: "My Profile", icon: UserIcon, to: "/profile", hideForRoles: ["student", "applicant"] },
+  // Admin and Dean / HOD: place lecturers (faculty, department, option).
+  { id: "lecturer-placement", label: "Lecturers", icon: UserIcon, to: "/lecturers" },
   {
     id: "campus-statistics",
     label: "Campus Statistics",
