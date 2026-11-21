@@ -126,7 +126,8 @@ function TranscriptResult({ r }: { r: TranscriptVerifyResult }) {
           <Row label="Other names" value={s?.other_names} />
           <Row label="Department" value={s?.department} />
           <Row label="Registration number" value={s?.regnumber} mono />
-          <Row label="Option" value={s?.option} />
+          {/* Omitted when the option repeats the department, as on the paper. */}
+          {s?.option && <Row label="Option" value={s.option} />}
         </div>
 
         <div className="px-5 py-3 border-t border-slate-100 dark:border-ink-700 text-[12px] text-slate-500 flex flex-wrap gap-x-6 gap-y-1">

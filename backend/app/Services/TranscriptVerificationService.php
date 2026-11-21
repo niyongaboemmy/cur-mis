@@ -84,8 +84,10 @@ final class TranscriptVerificationService
 
     /**
      * The issued transcript a code refers to, or null. `superseded_on` is the
-     * date a later transcript with different content was issued for the same
-     * student — i.e. the results changed after this copy was printed.
+     * date a later transcript with different results was issued for the same
+     * student — i.e. the results changed after this copy was printed. Only the
+     * results are compared ({@see results()}), not the layout, so a change to
+     * how the sheet prints never flags older copies.
      *
      * @return array<string,mixed>|null
      */
@@ -106,19 +108,55 @@ final class TranscriptVerificationService
             return null;
         }
 
-        $newer = $db->fetchOne(
-            'SELECT issued_on FROM transcript_verifications
+        $snapshot     = json_decode((string)$row['snapshot'], true) ?: [];
+        $mine         = self::results($snapshot);
+        $supersededOn = null;
+        $newer = $db->fetchAll(
+            'SELECT issued_on, snapshot FROM transcript_verifications
               WHERE regnumber = ? AND issued_at > ? AND content_hash <> ?
-              ORDER BY issued_at DESC LIMIT 1',
+              ORDER BY issued_at DESC',
             [$row['regnumber'], $row['issued_at'], $row['content_hash']]
         );
+        foreach ($newer as $n) {
+            if (self::results(json_decode((string)$n['snapshot'], true) ?: []) !== $mine) {
+                $supersededOn = $n['issued_on'];
+                break;
+            }
+        }
 
         return [
             'code'          => $row['code'],
             'issued_on'     => $row['issued_on'],
-            'superseded_on' => $newer ? $newer['issued_on'] : null,
-            'snapshot'      => json_decode((string)$row['snapshot'], true) ?: [],
+            'superseded_on' => $supersededOn,
+            'snapshot'      => $snapshot,
         ];
+    }
+
+    /**
+     * The results a snapshot records — module, credits and mark per sheet — in a
+     * form that ignores layout. Marks compare as whole numbers because copies
+     * issued before 2026-11-21 printed them rounded (79) where newer copies print
+     * them as recorded (78.68).
+     *
+     * @param  array<string,mixed> $snapshot
+     * @return array<int,array<int,array{0:string,1:int,2:?int}>>
+     */
+    private static function results(array $snapshot): array
+    {
+        $out = [];
+        foreach ((array)($snapshot['sheets'] ?? []) as $sheet) {
+            $rows = [];
+            foreach ((array)($sheet['modules'] ?? []) as $m) {
+                $mark   = $m['marks'] ?? null;
+                $rows[] = [
+                    (string)($m['code'] ?? ''),
+                    (int)($m['credits'] ?? 0),
+                    is_numeric($mark) ? (int)round((float)$mark) : null,
+                ];
+            }
+            $out[] = $rows;
+        }
+        return $out;
     }
 
     /** "7k3q 9xwm-2pld ht8r" → "7K3Q-9XWM-2PLD-HT8R"; null when it cannot be a code. */

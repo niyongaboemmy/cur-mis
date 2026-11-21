@@ -194,6 +194,12 @@ HTML;
         $faculty = (string)preg_replace('/^faculty\s+of\s+/i', '', $faculty);
         $faculty = htmlspecialchars(strtoupper($faculty)) ?: '—';
 
+        // Many programmes carry the department's own name as their option
+        // ("Bachelor of science in food processing" twice); print it once.
+        $optionRow = self::optionRepeatsDepartment($student)
+            ? ''
+            : "\n      <div class=\"row\">Option: {$option}</div>";
+
         return <<<HTML
     <div class="col col-l">
       <div class="row nowrap">SURNAME: {$surname}</div>
@@ -202,11 +208,18 @@ HTML;
     </div>
     <div class="col col-r">
       <div class="row">FACULTY OF {$faculty}</div>
-      <div class="row">DEPARTMENT: {$dept}</div>
-      <div class="row">Option: {$option}</div>
+      <div class="row">DEPARTMENT: {$dept}</div>{$optionRow}
       <div class="row">{$levelLine}</div>
     </div>
 HTML;
+    }
+
+    /** True when the option has the same name as the department (case and spacing ignored). */
+    private static function optionRepeatsDepartment(array $student): bool
+    {
+        $norm = static fn ($v): string => strtolower(trim((string)preg_replace('/\s+/u', ' ', (string)$v)));
+        $dept = $norm($student['dep_name'] ?? '');
+        return $dept !== '' && $dept === $norm($student['option_name'] ?? '');
     }
 
     /**
@@ -218,19 +231,22 @@ HTML;
      */
     private static function rowCells(array $r): array
     {
-        $pct = $r['percentage'] !== null ? (int)round((float)$r['percentage']) : null;
-        // A curriculum gap prints "0" here — never counted in the level
-        // TOTAL row above (that recomputes from `percentage`, which this
-        // row leaves NULL) — so the sheet is honest that nothing was
-        // actually awarded while still showing the module is outstanding.
+        // The mark prints exactly as recorded (two decimals at most, trailing
+        // zeros dropped: 78.70 → 78.7, 79.00 → 79) and the credit point is
+        // credits × that printed mark, so every row multiplies out on paper.
+        // Rounding the mark to a whole number would not: 20 credits × "79"
+        // read 1580 beside a credit point of 1574. A curriculum gap prints 0 /
+        // 0 and counts as 0 in the TOTAL row.
+        $cents     = self::markCents($r);
         $notMarked = !empty($r['not_marked']);
+        $credits   = (int)($r['module_credits'] ?? 0);
 
         return [
             'code'         => (string)($r['module_code'] ?? ''),
             'title'        => (string)($r['module_name'] ?? ''),
-            'credits'      => (int)($r['module_credits'] ?? 0),
-            'marks'        => $pct !== null ? (string)$pct : ($notMarked ? '0' : '—'),
-            'credit_point' => $r['credit_point'] !== null ? self::plain((float)$r['credit_point']) : '—',
+            'credits'      => $credits,
+            'marks'        => $cents !== null ? self::num($cents / 100) : ($notMarked ? '0' : '—'),
+            'credit_point' => $cents !== null ? self::num($credits * $cents / 100) : ($notMarked ? '0' : '—'),
             // The API already grades from the scale in whole letters; a row
             // carrying a stored "B+" straight from `module_marks` is normalised
             // here too, so no path can print a suffix onto the signed form.
@@ -265,7 +281,7 @@ HTML;
         }
 
         $credits = (int)$totals['credits'];
-        $cp      = self::plain((float)$totals['credit_points']);
+        $cp      = self::num((float)$totals['credit_points']);
         $avg     = $totals['weighted_average'] !== null
             ? number_format((float)$totals['weighted_average'], 2) . ' %'
             : '—';
@@ -387,7 +403,7 @@ HTML;
                 'modules' => array_values(array_map(static fn (array $r): array => self::rowCells($r), $list)),
                 'totals'  => [
                     'credits'          => (int)$totals['credits'],
-                    'credit_points'    => self::plain((float)$totals['credit_points']),
+                    'credit_points'    => self::num((float)$totals['credit_points']),
                     'weighted_average' => $totals['weighted_average'] !== null
                         ? number_format((float)$totals['weighted_average'], 2)
                         : null,
@@ -404,7 +420,7 @@ HTML;
                 'regnumber'   => trim((string)($student['regnumber'] ?? '')),
                 'faculty'     => trim((string)($student['fac_name'] ?? '')) ?: null,
                 'department'  => trim((string)($student['dep_name'] ?? '')) ?: null,
-                'option'      => trim((string)($student['option_name'] ?? '')) ?: null,
+                'option'      => self::optionRepeatsDepartment($student) ? null : (trim((string)($student['option_name'] ?? '')) ?: null),
             ],
             'registrar'    => Signatories::academicRegistrar(),
             'issued_place' => self::issueLocation(),
@@ -474,36 +490,61 @@ HTML;
     }
 
     /**
-     * Totals for one level — the same arithmetic the API reports for the whole
-     * record, applied to a single sheet.
+     * Totals for one sheet, computed from exactly what the rows print so the
+     * TOTAL row can be checked with a calculator:
+     *   - credits       = sum of the NUMBER OF CREDITS column, every row
+     *   - credit points = sum of the CREDIT POINT column (credits × mark)
+     *   - average       = credit points ÷ credits, to 2 decimals
+     * A module with no mark yet counts as 0: its credits are in the total and it
+     * adds nothing to the points, so 75, 0, 0, 0 averages over all four.
+     *
+     * Grade and decision are "Pending" while any module on the sheet has no
+     * mark — an average that still counts outstanding modules as 0 cannot
+     * award a grade or a promotion yet.
+     *
+     * Integer cents throughout: summing floats could print 10595.949999… as a
+     * total one cent away from the column it adds up.
      *
      * @param array<int,array<string,mixed>> $rows
      */
     private static function levelTotals(array $rows): array
     {
         $credits = 0;
-        $points  = 0.0;
+        $cents   = 0;   // credit points × 100
         $failed  = 0;
+        $pending = false;
 
         foreach ($rows as $r) {
-            $pct = $r['percentage'] !== null ? (float)$r['percentage'] : null;
-            if ($pct === null) continue;
             $c        = (int)($r['module_credits'] ?? 0);
             $credits += $c;
-            $points  += $c * $pct;
-            if ($pct < GradingScale::PASS_MARK) $failed++;
+            $mark     = self::markCents($r);
+            if ($mark === null) {
+                $pending = true;
+                continue;
+            }
+            $cents += $c * $mark;
+            if ($mark < GradingScale::PASS_MARK * 100) $failed++;
         }
 
-        $avg = $credits > 0 ? round($points / $credits, 2) : null;
+        // Average in cents, rounded half up: intdiv(2n + d, 2d) = round(n / d).
+        $avg = $credits > 0 ? intdiv(2 * $cents + $credits, 2 * $credits) / 100 : null;
 
         return [
             'credits'          => $credits,
-            'credit_points'    => $points,
+            'credit_points'    => $cents / 100,
             'weighted_average' => $avg,
-            'grade_label'      => $avg !== null ? (GradingScale::labelFor($avg) ?? '—') : null,
+            'grade_label'      => $avg === null ? null
+                : ($pending ? 'Pending' : (GradingScale::labelFor($avg) ?? '—')),
             'decision'         => $avg === null ? null
-                : (($failed === 0 && $avg >= GradingScale::PASS_MARK) ? 'Promoted' : 'Repeat'),
+                : ($pending ? 'Pending'
+                    : (($failed === 0 && $avg >= GradingScale::PASS_MARK) ? 'Promoted' : 'Repeat')),
         ];
+    }
+
+    /** The row's mark in hundredths (78.68 → 7868), or null when it has none. */
+    private static function markCents(array $r): ?int
+    {
+        return $r['percentage'] !== null ? (int)round((float)$r['percentage'] * 100) : null;
     }
 
     /**
@@ -595,16 +636,14 @@ HTML;
         return ($d === 1 || $d === 2) ? $d : null;
     }
 
-    /** Trim a band boundary to how a human writes it: 79.00 → 79, 49.99 → 49.99. */
+    /**
+     * A number as a human writes it, to two decimals at most: 79.00 → 79,
+     * 78.70 → 78.7, 1219.95 → 1219.95. Never a thousands separator — credit
+     * points print 1065, not 1,065, on the form.
+     */
     private static function num(mixed $v): string
     {
         return rtrim(rtrim(number_format((float)$v, 2, '.', ''), '0'), '.');
-    }
-
-    /** Credit points print unseparated on the form — 1065, never 1,065. */
-    private static function plain(float $v): string
-    {
-        return number_format($v, 0, '.', '');
     }
 
     /* ── styling ───────────────────────────────────────────────────────── */

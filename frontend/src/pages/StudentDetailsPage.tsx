@@ -6140,19 +6140,22 @@ function tLevelLabel(level: string, name?: string): string {
   return (name || `Level ${n}`).replace(/\s+([,;:])/g, "$1").trim();
 }
 
-/** Credits and weighted average for one level, matching the PDF's TOTAL row. */
+/**
+ * Credits and average for one level, matching the PDF's TOTAL row: every
+ * module's credits count, a module with no mark yet counts as 0, and the
+ * average is credit points ÷ credits. Whole cents, so it rounds like the PDF.
+ */
 function tLevelSummary(list: MyMarksRow[]): string {
   let credits = 0;
-  let points = 0;
+  let cents = 0;
   let pending = 0;
   for (const r of list) {
-    if (r.not_marked) { pending++; continue; }
-    if (r.percentage === null || r.percentage === undefined) continue;
     const c = Number(r.module_credits) || 0;
     credits += c;
-    points += c * Number(r.percentage);
+    if (r.not_marked || r.percentage === null || r.percentage === undefined) { pending++; continue; }
+    cents += c * Math.round(Number(r.percentage) * 100);
   }
-  const avg = credits > 0 ? (points / credits).toFixed(2) : null;
+  const avg = credits > 0 ? (Math.floor((2 * cents + credits) / (2 * credits)) / 100).toFixed(2) : null;
   const completed = list.length - pending;
   return `${completed} completed${pending ? ` · ${pending} pending` : ""} · ${credits} credits${
     avg !== null ? ` · ${avg}%` : ""
