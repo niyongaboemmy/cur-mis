@@ -7,6 +7,7 @@ import {
   CheckCircle2, Clock, Sparkles, AlertCircle, GraduationCap, FileText,
   Download, FileSpreadsheet, StickyNote, X, MessageSquarePlus,
   EyeOff, RotateCcw, Upload, Banknote, Edit2, Archive,
+  ArrowUp, ArrowDown, ArrowUpDown,
 } from 'lucide-react'
 import { applicationAdminService, intakeService } from '@/services/admissionService'
 import { ApplicationStatus, ApplicationPendingNote } from '@/types/admission'
@@ -120,6 +121,16 @@ export default function ApplicationsListPage() {
   const [activeTab, setActiveTab] = useState<'list' | 'dashboard'>('list')
   // Submission date window, shared by the list, the stat tiles and the exports.
   const [dateRange, setDateRange] = useState<DateRangeValue>({ from: '', to: '' })
+  // Column sort: click a header to sort ascending, again for descending,
+  // a third time to return to the default order.
+  const [sortBy, setSortBy]   = useState<SortKey | ''>('')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  const onSortHeader = (key: SortKey) => {
+    setPage(1)
+    if (sortBy !== key) { setSortBy(key); setSortDir('asc'); return }
+    if (sortDir === 'asc') { setSortDir('desc'); return }
+    setSortBy(''); setSortDir('asc')
+  }
   // Edit modal state
   const [editingApp, setEditingApp] = useState<any>(null)
 
@@ -127,9 +138,10 @@ export default function ApplicationsListPage() {
   const intakes = intakesQ.data?.data ?? []
 
   const listQ = useQuery({
-    queryKey: ['admin', 'applications', page, status, intake, campusId, mode, q, levelId, gender, paymentStatus, paidFirst, showHidden, dateRange.from, dateRange.to],
+    queryKey: ['admin', 'applications', page, status, intake, campusId, mode, q, levelId, gender, paymentStatus, paidFirst, showHidden, dateRange.from, dateRange.to, sortBy, sortDir],
     queryFn: () => applicationAdminService.list({
       page, per_page: 15,
+      ...(sortBy ? { sort_by: sortBy, sort_dir: sortDir } : {}),
       status: status || undefined,
       intake: intake || undefined,
       campus_id: campusId || undefined,
@@ -533,11 +545,11 @@ export default function ApplicationsListPage() {
             <table className="data-table">
               <thead>
                 <tr className="bg-ink-50 dark:bg-ink-800/50 border-b border-ink-200 dark:border-ink-700">
-                  <th className="font-semibold text-ink-700 dark:text-ink-200 uppercase text-[11px] tracking-wider py-3">Applicant</th>
-                  <th className="font-semibold text-ink-700 dark:text-ink-200 uppercase text-[11px] tracking-wider py-3">Program &amp; placement</th>
-                  <th className="font-semibold text-ink-700 dark:text-ink-200 uppercase text-[11px] tracking-wider py-3">Status</th>
-                  <th className="font-semibold text-ink-700 dark:text-ink-200 uppercase text-[11px] tracking-wider py-3">Submitted</th>
-                  <th className="font-semibold text-ink-700 dark:text-ink-200 uppercase text-[11px] tracking-wider py-3">Pending notes</th>
+                  <SortableTh label="Applicant" sortKey="applicant" active={sortBy} dir={sortDir} onSort={onSortHeader} />
+                  <SortableTh label="Program & placement" sortKey="program" active={sortBy} dir={sortDir} onSort={onSortHeader} />
+                  <SortableTh label="Status" sortKey="status" active={sortBy} dir={sortDir} onSort={onSortHeader} />
+                  <SortableTh label="Submitted" sortKey="submitted" active={sortBy} dir={sortDir} onSort={onSortHeader} />
+                  <SortableTh label="Pending notes" sortKey="notes" active={sortBy} dir={sortDir} onSort={onSortHeader} />
                   <th className="font-semibold text-ink-700 dark:text-ink-200 uppercase text-[11px] tracking-wider py-3 text-right">Actions</th>
                 </tr>
               </thead>
@@ -962,6 +974,41 @@ function Skel() {
         <div key={i} className="h-10 rounded-md bg-ink-50 dark:bg-ink-700/30 animate-pulse" />
       ))}
     </div>
+  )
+}
+
+type SortKey = 'applicant' | 'program' | 'status' | 'submitted' | 'notes'
+
+/** Table header that sorts the list on click: asc → desc → default. */
+function SortableTh({
+  label, sortKey, active, dir, onSort,
+}: {
+  label: string
+  sortKey: SortKey
+  active: SortKey | ''
+  dir: 'asc' | 'desc'
+  onSort: (key: SortKey) => void
+}) {
+  const isActive = active === sortKey
+  const Icon = !isActive ? ArrowUpDown : dir === 'asc' ? ArrowUp : ArrowDown
+  return (
+    <th
+      className="font-semibold text-ink-700 dark:text-ink-200 uppercase text-[11px] tracking-wider py-3"
+      aria-sort={isActive ? (dir === 'asc' ? 'ascending' : 'descending') : 'none'}
+    >
+      <button
+        type="button"
+        onClick={() => onSort(sortKey)}
+        className={
+          'inline-flex items-center gap-1 uppercase tracking-wider hover:text-ink-900 dark:hover:text-white ' +
+          (isActive ? 'text-primary-700 dark:text-primary-300' : '')
+        }
+        title={`Sort by ${label}`}
+      >
+        <span>{label}</span>
+        <Icon className={'w-3 h-3 ' + (isActive ? '' : 'opacity-40')} />
+      </button>
+    </th>
   )
 }
 

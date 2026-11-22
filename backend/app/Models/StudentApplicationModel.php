@@ -266,6 +266,21 @@ class StudentApplicationModel extends BaseModel
             $orderBy = '(sa.paid_at IS NOT NULL) DESC, sa.id DESC';
         }
 
+        // Column sort chosen by clicking a list header. Only whitelisted
+        // expressions reach ORDER BY; it overrides the paid-first pin.
+        $sortColumns = [
+            'applicant' => 'sa.last_name, sa.first_name',
+            'program'   => 'o.name',
+            'status'    => 'sa.status',
+            'submitted' => 'sa.submitted_at',
+            'notes'     => '(SELECT COUNT(*) FROM `application_pending_notes` pn WHERE pn.application_id = sa.id)',
+        ];
+        $sortBy  = (string)($filters['sort_by'] ?? '');
+        $sortDir = strtolower((string)($filters['sort_dir'] ?? 'asc')) === 'desc' ? 'DESC' : 'ASC';
+        if (isset($sortColumns[$sortBy])) {
+            $orderBy = "{$sortColumns[$sortBy]} {$sortDir}, sa.id DESC";
+        }
+
         if (!empty($filters['hidden_filter'])) {
             if ($filters['hidden_filter'] === 'exclude') {
                 $conditions[] = '(sa.is_hidden IS NULL OR sa.is_hidden = 0)';

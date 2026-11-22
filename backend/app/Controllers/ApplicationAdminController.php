@@ -121,6 +121,8 @@ class ApplicationAdminController extends BaseController
             'gender'          => $request->query('gender')          ?? '',
             'payment_status'  => $request->query('payment_status')  ?? '',
             'sort_paid_first' => $request->query('sort_paid_first') ?? '',
+            'sort_by'         => $request->query('sort_by')         ?? '',
+            'sort_dir'        => $request->query('sort_dir')        ?? '',
             // Submission date range (YYYY-MM-DD). Either bound may stand alone.
             'submitted_from'  => $request->query('submitted_from')  ?? '',
             'submitted_to'    => $request->query('submitted_to')    ?? '',
