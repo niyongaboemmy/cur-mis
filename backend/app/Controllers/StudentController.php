@@ -4756,12 +4756,14 @@ class StudentController extends BaseController
             'disability_type'  => ['label' => 'Disability Type',      'group' => 'Disability', 'sql' => "s.disability",                                 'alias' => 'disability_type'],
 
             // ── Academics ──
-            'faculty_name'     => ['label' => 'Faculty',              'group' => 'Academics', 'sql' => "COALESCE(f.fac_name, s.faculty)",               'alias' => 'faculty_name'],
-            'department_name'  => ['label' => 'Department',           'group' => 'Academics', 'sql' => "COALESCE(d.dep_name, s.department)",           'alias' => 'department_name'],
+            // Name lookups never fall back to the raw stored value when it is
+            // an id (all digits): an unmatched id exports blank, not "12".
+            'faculty_name'     => ['label' => 'Faculty',              'group' => 'Academics', 'sql' => "COALESCE(f.fac_name, IF(s.faculty REGEXP '^[0-9]+$', NULL, s.faculty))",               'alias' => 'faculty_name'],
+            'department_name'  => ['label' => 'Department',           'group' => 'Academics', 'sql' => "COALESCE(d.dep_name, IF(s.department REGEXP '^[0-9]+$', NULL, s.department))",           'alias' => 'department_name'],
             'school_name'      => ['label' => 'School',               'group' => 'Academics', 'sql' => "sch.school_name",                               'alias' => 'school_name'],
-            'program_name'     => ['label' => 'Programme Name',       'group' => 'Academics', 'sql' => "COALESCE(o.name, s.program)",                   'alias' => 'program_name'],
+            'program_name'     => ['label' => 'Programme Name',       'group' => 'Academics', 'sql' => "COALESCE(o.name, IF(s.program REGEXP '^[0-9]+$', NULL, s.program))",                   'alias' => 'program_name'],
             'campus_name'      => ['label' => 'Campus',               'group' => 'Academics', 'sql' => "s.campus",                                       'alias' => 'campus_name'],
-            'current_level'    => ['label' => 'Current Level',        'group' => 'Academics', 'sql' => "COALESCE(lvl.name, s.current_level)",           'alias' => 'current_level'],
+            'current_level'    => ['label' => 'Current Level',        'group' => 'Academics', 'sql' => "COALESCE(lvl.name, IF(s.current_level REGEXP '^[0-9]+$', NULL, s.current_level))",           'alias' => 'current_level'],
             'programme_level'  => ['label' => 'Qualification Level',  'group' => 'Academics', 'sql' => "s.programme_level",                             'alias' => 'programme_level'],
             'category'         => ['label' => 'Category',             'group' => 'Academics', 'sql' => "s.category",                                    'alias' => 'category'],
             'intake'           => ['label' => 'Intake',               'group' => 'Academics', 'sql' => "s.intake",                                      'alias' => 'intake'],
@@ -5091,6 +5093,7 @@ class StudentController extends BaseController
         if ($templateId !== null && $templateId !== '') {
             $picked = $this->resolveTemplateColumns((string)$templateId, $request);
         }
+        $usedTemplate = !empty($picked);
 
         if (empty($picked)) {
             $rawCols = trim((string)($request->query('columns') ?? ''));
@@ -5112,6 +5115,14 @@ class StudentController extends BaseController
 
         if (empty($picked)) {
             $this->error($response, 'No columns selected for export.', 422);
+        }
+
+        // Excel layout: show Department (by name) instead of Programme and
+        // Learning Mode. Saved and system templates keep the exact columns
+        // they declare (the MIFOTRA return is a fixed format).
+        $wantsXlsx = in_array(strtolower(trim((string)($request->query('format') ?? 'csv'))), ['xlsx', 'excel'], true);
+        if ($wantsXlsx && !$usedTemplate) {
+            $picked = self::excelDepartmentLayout($picked);
         }
 
         // ── Build the WHERE from the live list filters ─────────────────
@@ -5206,6 +5217,40 @@ class StudentController extends BaseController
         }
         fclose($out);
         exit;
+    }
+
+    /**
+     * Rewrite a picked column list for the Excel export: drop Programme Name
+     * and Learning Mode, and make sure Department is present (placed after
+     * Faculty when it has to be added).
+     *
+     * @param array<int, array{key:string,label:string}> $picked
+     * @return array<int, array{key:string,label:string}>
+     */
+    private static function excelDepartmentLayout(array $picked): array
+    {
+        $dropped = ['program_name' => true, 'learning_mode' => true];
+        $out = [];
+        $hasDepartment = false;
+        foreach ($picked as $p) {
+            if (isset($dropped[$p['key']])) continue;
+            if ($p['key'] === 'department_name') $hasDepartment = true;
+            $out[] = $p;
+        }
+
+        if (!$hasDepartment) {
+            $dept = ['key' => 'department_name', 'label' => self::exportColumns()['department_name']['label']];
+            $facultyAt = null;
+            foreach ($out as $i => $p) {
+                if ($p['key'] === 'faculty_name') { $facultyAt = $i; break; }
+            }
+            if ($facultyAt === null) {
+                $out[] = $dept;
+            } else {
+                array_splice($out, $facultyAt + 1, 0, [$dept]);
+            }
+        }
+        return $out;
     }
 
     /**
