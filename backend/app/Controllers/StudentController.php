@@ -4759,10 +4759,15 @@ class StudentController extends BaseController
             // Name lookups never fall back to the raw stored value when it is
             // an id (all digits): an unmatched id exports blank, not "12".
             'faculty_name'     => ['label' => 'Faculty',              'group' => 'Academics', 'sql' => "COALESCE(f.fac_name, IF(s.faculty REGEXP '^[0-9]+$', NULL, s.faculty))",               'alias' => 'faculty_name'],
-            'department_name'  => ['label' => 'Department',           'group' => 'Academics', 'sql' => "COALESCE(d.dep_name, IF(s.department REGEXP '^[0-9]+$', NULL, s.department))",           'alias' => 'department_name'],
+            // Full department name. The stored value is a dep_id; a legacy
+            // acronym (dep_acronym) is also resolved, so neither an id nor an
+            // abbreviation reaches the export.
+            'department_name'  => ['label' => 'Department',           'group' => 'Academics', 'sql' => "COALESCE((SELECT dd.dep_name FROM `departements` dd WHERE dd.dep_id = CAST(NULLIF(s.department, '') AS UNSIGNED) LIMIT 1), (SELECT dd.dep_name FROM `departements` dd WHERE dd.dep_acronym = s.department LIMIT 1), IF(s.department REGEXP '^[0-9]+$', NULL, s.department))",           'alias' => 'department_name'],
             'school_name'      => ['label' => 'School',               'group' => 'Academics', 'sql' => "sch.school_name",                               'alias' => 'school_name'],
             'program_name'     => ['label' => 'Programme Name',       'group' => 'Academics', 'sql' => "COALESCE(o.name, IF(s.program REGEXP '^[0-9]+$', NULL, s.program))",                   'alias' => 'program_name'],
-            'campus_name'      => ['label' => 'Campus',               'group' => 'Academics', 'sql' => "s.campus",                                       'alias' => 'campus_name'],
+            // Full campus name. student.campus holds campuses.id; a legacy
+            // code (campuses.code, e.g. SAVE) is also resolved.
+            'campus_name'      => ['label' => 'Campus',               'group' => 'Academics', 'sql' => "COALESCE((SELECT cc.name FROM `campuses` cc WHERE cc.id = CAST(NULLIF(s.campus, '') AS UNSIGNED) LIMIT 1), (SELECT cc.name FROM `campuses` cc WHERE cc.code = s.campus LIMIT 1), IF(s.campus REGEXP '^[0-9]+$', NULL, s.campus))",                                       'alias' => 'campus_name'],
             'current_level'    => ['label' => 'Current Level',        'group' => 'Academics', 'sql' => "COALESCE(lvl.name, IF(s.current_level REGEXP '^[0-9]+$', NULL, s.current_level))",           'alias' => 'current_level'],
             'programme_level'  => ['label' => 'Qualification Level',  'group' => 'Academics', 'sql' => "s.programme_level",                             'alias' => 'programme_level'],
             'category'         => ['label' => 'Category',             'group' => 'Academics', 'sql' => "s.category",                                    'alias' => 'category'],
