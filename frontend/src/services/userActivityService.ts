@@ -1,4 +1,4 @@
-import { api } from '@/services/api'
+import { api, apiClient } from '@/services/api'
 
 export interface UserActivityRow {
   id: number
@@ -85,6 +85,12 @@ export const userActivityService = {
   stats: () => api.get<UserActivityStats>('/user-activity/stats'),
 
   userDetail: (id: number) => api.get<UserActivityDetail>(`/user-activity/users/${id}`),
+
+  // The PDF is binary, so it bypasses the JSON wrapper and comes back as a Blob.
+  downloadPdf: async (id: number): Promise<Blob> => {
+    const res = await apiClient.get(`/user-activity/users/${id}/pdf`, { responseType: 'blob' })
+    return res.data as Blob
+  },
 
   heartbeat: () => api.post('/activity/heartbeat'),
 

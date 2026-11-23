@@ -8,6 +8,7 @@ use Core\Database;
 use Core\Request;
 use Core\Response;
 use App\Services\UserActivityService;
+use App\Helpers\UserActivityPdf;
 
 /**
  * User activity monitoring: who logged in, when, for how long, and what they
@@ -127,7 +128,38 @@ class UserActivityController extends BaseController
     /** GET /api/user-activity/users/:id — profile, sessions, activity timeline. */
     public function showUser(Request $request, Response $response): never
     {
-        $id = (int) $request->param('id');
+        $detail = $this->userDetail((int) $request->param('id'));
+        if ($detail === null) {
+            $this->error($response, 'User not found.', 404);
+        }
+        $this->success($response, $detail, 'User activity retrieved.');
+    }
+
+    /** GET /api/user-activity/users/:id/pdf — the same detail as a downloadable PDF report. */
+    public function exportPdf(Request $request, Response $response): never
+    {
+        $detail = $this->userDetail((int) $request->param('id'));
+        if ($detail === null) {
+            $this->error($response, 'User not found.', 404);
+        }
+        if (!class_exists('\Dompdf\Dompdf')) {
+            $this->error($response, 'PDF export is not available on this server.', 503);
+        }
+
+        $pdf   = UserActivityPdf::render($detail);
+        $slug  = preg_replace('/[^A-Za-z0-9_-]+/', '-', (string) $detail['user']['full_name']);
+        $file  = 'user-activity-' . trim((string) $slug, '-') . '-' . date('Y-m-d') . '.pdf';
+
+        header('Content-Type: application/pdf');
+        header('Content-Disposition: attachment; filename="' . $file . '"');
+        header('Content-Length: ' . strlen($pdf));
+        echo $pdf;
+        exit;
+    }
+
+    /** Full per-user payload shared by the detail view and the PDF; null when the user does not exist. */
+    private function userDetail(int $id): ?array
+    {
         $db = Database::getInstance();
 
         $user = $db->fetchOne(
@@ -137,7 +169,7 @@ class UserActivityController extends BaseController
             [$id]
         );
         if (!$user) {
-            $this->error($response, 'User not found.', 404);
+            return null;
         }
 
         $summary = $db->fetchOne(
@@ -198,7 +230,7 @@ class UserActivityController extends BaseController
             [$id]
         );
 
-        $this->success($response, [
+        return [
             'user' => [
                 'id'        => (int) $user['id'],
                 'full_name' => $user['full_name'],
@@ -217,7 +249,7 @@ class UserActivityController extends BaseController
                 fn(array $m) => ['module' => $m['module'], 'views' => (int) $m['views']],
                 $modules
             ),
-        ], 'User activity retrieved.');
+        ];
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────────

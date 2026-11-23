@@ -18,4 +18,5 @@ $router->group('/api/user-activity', function ($router) {
     $router->get('/stats',       [UserActivityController::class, 'stats']);
     $router->get('/users',       [UserActivityController::class, 'listUsers']);
     $router->get('/users/:id',   [UserActivityController::class, 'showUser']);
+    $router->get('/users/:id/pdf', [UserActivityController::class, 'exportPdf']);
 }, [AuthMiddleware::class, new PermissionMiddleware(Permissions::VIEW_SYSTEM_LOGS)]);

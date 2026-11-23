@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   Activity, Clock, LogIn, Eye, Users, Search, RefreshCw, X,
-  ChevronLeft, ChevronRight, Globe, Monitor,
+  ChevronLeft, ChevronRight, Globe, Monitor, FileDown,
 } from 'lucide-react'
 import {
   userActivityService,
@@ -114,6 +114,31 @@ function UserDetailPanel({ userId, onClose }: { userId: number; onClose: () => v
   })
   const detail: UserActivityDetail | null = detailQ.data?.data ?? null
 
+  const [exporting, setExporting] = useState(false)
+  const [exportError, setExportError] = useState<string | null>(null)
+
+  const exportPdf = async () => {
+    if (!detail) return
+    setExporting(true)
+    setExportError(null)
+    try {
+      const blob = await userActivityService.downloadPdf(userId)
+      const slug = detail.user.full_name.replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'user'
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `user-activity-${slug}-${new Date().toISOString().slice(0, 10)}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+    } catch {
+      setExportError('Could not export the PDF. Please try again.')
+    } finally {
+      setExporting(false)
+    }
+  }
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
     window.addEventListener('keydown', onKey)
@@ -158,14 +183,29 @@ function UserDetailPanel({ userId, onClose }: { userId: number; onClose: () => v
               )}
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="rounded-lg p-2 text-ink-500 hover:bg-ink-100 hover:text-ink-900 dark:hover:bg-ink-800"
-            aria-label="Close"
-          >
-            <X className="h-5 w-5" />
-          </button>
+          <div className="flex shrink-0 items-center gap-2">
+            <button
+              onClick={exportPdf}
+              disabled={!detail || exporting}
+              className="inline-flex items-center gap-2 rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm font-medium text-ink-700 shadow-sm hover:bg-ink-50 disabled:opacity-40 dark:border-ink-700 dark:bg-ink-900 dark:text-ink-200 dark:hover:bg-ink-800"
+            >
+              <FileDown className="h-4 w-4" />
+              {exporting ? 'Exporting…' : 'Export PDF'}
+            </button>
+            <button
+              onClick={onClose}
+              className="rounded-lg p-2 text-ink-500 hover:bg-ink-100 hover:text-ink-900 dark:hover:bg-ink-800"
+              aria-label="Close"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
         </header>
+        {exportError && (
+          <p className="border-b border-red-200 bg-red-50 px-5 py-2 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
+            {exportError}
+          </p>
+        )}
 
         <nav className="flex gap-1 border-b border-ink-200 px-5 dark:border-ink-800">
           {tabs.map((t) => (
