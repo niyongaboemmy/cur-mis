@@ -612,19 +612,13 @@ const NAV_TREE: NavNode[] = [
         ],
       },
       {
-        to: "/exams/revaluations",
-        label: "Revaluations",
-        permissions: [PERMISSIONS.MANAGE_REVALUATIONS],
-      },
-      {
-        to: "/academic/transcript-requests",
-        label: "Transcripts",
-        permissions: [PERMISSIONS.MANAGE_TRANSCRIPT_REQUESTS],
-      },
-      {
-        to: "/academic/certificates",
-        label: "Certificates",
-        permissions: [PERMISSIONS.MANAGE_ACADEMIC_CERTIFICATES],
+        // Promotion runs in the all-in-one PHP app (opened in an iframe).
+        to: "/academic/promote",
+        label: "Promote",
+        permissions: [
+          PERMISSIONS.MANAGE_DELIBERATIONS,
+          PERMISSIONS.MANAGE_EXAMS,
+        ],
       },
       {
         // The institution-wide scale: bulk-saves every band at once and can
@@ -639,31 +633,9 @@ const NAV_TREE: NavNode[] = [
         ],
       },
       {
-        // Which modules each programme's transcript prints. Modules nobody has
-        // ruled on follow the curriculum, so this only ever narrows or widens
-        // a programme deliberately.
-        to: "/academic/transcript-modules",
-        label: "Transcript modules",
-        permissions: [
-          PERMISSIONS.MANAGE_MODULE_MARKS,
-          PERMISSIONS.MANAGE_ACADEMICS,
-        ],
-      },
-      {
         to: "/academic/analytics",
         label: "Reports & analytics",
         permissions: [PERMISSIONS.VIEW_ACADEMIC_ANALYTICS],
-      },
-      {
-        // Institutional documents (fee structures, policies). Uploading and
-        // deleting is what MANAGE_ACADEMIC_SETTINGS guards; before this the
-        // page had no entry point anywhere outside the Finance hub.
-        to: "/academic/system-documents",
-        label: "System documents",
-        permissions: [
-          PERMISSIONS.MANAGE_ACADEMIC_SETTINGS,
-          PERMISSIONS.VIEW_SYSTEM_BASICS,
-        ],
       },
     ],
   },
@@ -968,6 +940,7 @@ const ROUTE_TITLES: Record<string, { title: string; sub?: string }> = {
   "/announcements": { title: "Announcements", sub: "Exam schedules, results, holidays and notices" },
   "/exams/grading-scale": { title: "Grading scale & GPA", sub: "Configure grade bands and grade points" },
   "/exams/revaluations": { title: "Revaluation requests", sub: "Review and process result re-marks" },
+  "/academic/promote": { title: "Promote students", sub: "Promotion run for the current academic year" },
   "/forums": { title: "Discussion forums", sub: "Community discussions" },
   "/": {
     title: "Admin Dashboard",

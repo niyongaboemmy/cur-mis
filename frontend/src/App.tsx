@@ -60,6 +60,7 @@ import MyPayslipsPhpPage from "@/pages/hr/MyPayslipsPhpPage";
 import LeaveRequestsPhpPage from "@/pages/hr/LeaveRequestsPhpPage";
 import ContractManagementPage from "@/pages/hr/ContractManagementPage";
 import MonitoringPhpPage from "@/pages/hr/MonitoringPhpPage";
+import PromotePage from "@/pages/academic/PromotePage";
 import PerformanceMonitoringPage from "@/pages/hr/PerformanceMonitoringPage";
 import RecruitmentMonitoringPage from "@/pages/hr/RecruitmentMonitoringPage";
 import EmployeeRelationsMonitoringPage from "@/pages/hr/EmployeeRelationsMonitoringPage";
@@ -1058,6 +1059,7 @@ function App() {
                   path="/exams/deliberation"
                   element={<DeliberationPage />}
                 />
+                <Route path="/academic/promote" element={<PromotePage />} />
               </Route>
 
               <Route
