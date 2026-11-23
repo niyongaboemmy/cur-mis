@@ -4586,14 +4586,6 @@ function OldRecordLookup({ regnumber }: { regnumber?: string | null }) {
   const src = `${OLD_APPLICANTS_URL}?q=${encodeURIComponent(reg)}`;
   return (
     <div className="card mt-6 overflow-hidden">
-      <div className="px-4 py-3 border-b border-ink-100 dark:border-ink-700 flex items-center justify-between gap-3">
-        <h4 className="text-sm font-semibold text-ink-900 dark:text-white">
-          Old records lookup · {reg}
-        </h4>
-        <a href={src} target="_blank" rel="noopener noreferrer" className="text-xs text-primary-700 dark:text-primary-300 hover:underline">
-          Open in new tab
-        </a>
-      </div>
       <iframe
         src={src}
         title="Old records lookup"
