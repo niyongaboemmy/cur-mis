@@ -4573,6 +4573,37 @@ function DocumentUploadSection() {
   );
 }
 
+const OLD_APPLICANTS_URL = "https://cur.ac.rw/umis/old_applicants/index.php";
+
+/**
+ * Staff-only panel shown when a student has no application on file. Opens
+ * the legacy applicants lookup with the registration number in the URL; that
+ * page searches "Find all" for it and opens the matching record.
+ */
+function OldRecordLookup({ regnumber }: { regnumber?: string | null }) {
+  const reg = (regnumber ?? "").trim();
+  if (!reg) return null;
+  const src = `${OLD_APPLICANTS_URL}?q=${encodeURIComponent(reg)}`;
+  return (
+    <div className="card mt-6 overflow-hidden">
+      <div className="px-4 py-3 border-b border-ink-100 dark:border-ink-700 flex items-center justify-between gap-3">
+        <h4 className="text-sm font-semibold text-ink-900 dark:text-white">
+          Old records lookup · {reg}
+        </h4>
+        <a href={src} target="_blank" rel="noopener noreferrer" className="text-xs text-primary-700 dark:text-primary-300 hover:underline">
+          Open in new tab
+        </a>
+      </div>
+      <iframe
+        src={src}
+        title="Old records lookup"
+        className="block w-full border-0 bg-white"
+        style={{ height: "75vh" }}
+      />
+    </div>
+  );
+}
+
 function DocumentsTab({
   student,
   selfMode = false,
@@ -4631,6 +4662,7 @@ function DocumentsTab({
 
   if (!applicationId && !offer && !canUpload) {
     return (
+      <>
       <div className="card p-12 flex flex-col items-center justify-center text-center">
         <div className="w-16 h-16 rounded-full bg-ink-100 dark:bg-ink-800 flex items-center justify-center text-ink-400 mb-4">
           <FileText className="w-8 h-8" />
@@ -4644,6 +4676,8 @@ function DocumentsTab({
             : "This student was not enrolled through the admissions portal, so there are no uploaded documents to display."}
         </p>
       </div>
+      {!selfMode && <OldRecordLookup regnumber={student.regnumber} />}
+      </>
     );
   }
 
