@@ -446,7 +446,7 @@ export default function StudentDetailsPage({
           studentId={student.id}
           regNumber={student.regnumber || student.index_number || null}
           studentName={`${student.fname} ${student.lname}`}
-          programme={String(student.programme_name || (student.application as any)?.program_name || "")}
+          programme={String(student.program_name || student.programme_name || (student.application as any)?.program_name || "")}
         />
       )}
     </div>
@@ -473,18 +473,25 @@ function OverviewTab({
     stats?.facets?.faculty?.find(
       (f: any) => String(f.value) === String(student.faculty),
     )?.label ??
+    student.faculty_name ??
     app?.faculty_name ??
     student.faculty;
   const deptName =
     stats?.facets?.department?.find(
       (f: any) => String(f.value) === String(student.department),
     )?.label ??
+    student.department_name ??
     app?.department_name ??
     student.department;
+  // Names come from the student's CURRENT record first (the one management
+  // edits). The application's faculty/programme/level are only the values the
+  // student was admitted with, so they must not override a later change.
   const levelName =
     stats?.facets?.current_level?.find(
       (f: any) => String(f.value) === String(student.current_level),
-    )?.label ?? student.current_level;
+    )?.label ??
+    student.level_name ??
+    student.current_level;
   // The programme is the catalogue option the student is assigned to. The
   // legacy `student.program` column actually stores the learning mode
   // (Day/Evening/Weekend), so we deliberately do NOT fall back to it here —
@@ -493,6 +500,7 @@ function OverviewTab({
     stats?.facets?.options?.find(
       (o: any) => String(o.value) === String(student.std_option),
     )?.label ??
+    student.program_name ??
     app?.program_name ??
     null;
 
