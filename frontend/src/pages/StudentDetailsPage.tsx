@@ -178,6 +178,10 @@ export default function StudentDetailsPage({
     queryFn: () =>
       selfMode ? studentService.me() : studentService.show(Number(id)),
     enabled: selfMode || !!id,
+    // Always re-fetch the record when the page opens, so changes made in
+    // management show up at once instead of after the 5-minute client cache.
+    staleTime: 0,
+    refetchOnMount: "always",
   });
 
   const navigate = useNavigate();
