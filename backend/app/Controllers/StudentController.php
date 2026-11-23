@@ -5225,20 +5225,19 @@ class StudentController extends BaseController
     }
 
     /**
-     * Rewrite a picked column list for the Excel export: drop Programme Name
-     * and Learning Mode, and make sure Department is present (placed after
-     * Faculty when it has to be added).
+     * Adjust a picked column list for the Excel export: make sure Department
+     * is present (placed after Faculty when it has to be added). Every other
+     * column the user ticked, including Programme Name and Learning Mode, is
+     * kept as picked.
      *
      * @param array<int, array{key:string,label:string}> $picked
      * @return array<int, array{key:string,label:string}>
      */
     private static function excelDepartmentLayout(array $picked): array
     {
-        $dropped = ['program_name' => true, 'learning_mode' => true];
         $out = [];
         $hasDepartment = false;
         foreach ($picked as $p) {
-            if (isset($dropped[$p['key']])) continue;
             if ($p['key'] === 'department_name') $hasDepartment = true;
             $out[] = $p;
         }
