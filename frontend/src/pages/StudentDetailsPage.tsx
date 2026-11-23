@@ -4661,6 +4661,11 @@ function DocumentsTab({
   const contact = docsQ.data?.data?.student_contact;
 
   if (!applicationId && !offer && !canUpload) {
+    // Staff with a registration number see the old-records lookup alone;
+    // the "No application on file" card is only shown otherwise.
+    if (!selfMode && (student.regnumber ?? "").trim()) {
+      return <OldRecordLookup regnumber={student.regnumber} />;
+    }
     return (
       <>
       <div className="card p-12 flex flex-col items-center justify-center text-center">
@@ -4676,7 +4681,6 @@ function DocumentsTab({
             : "This student was not enrolled through the admissions portal, so there are no uploaded documents to display."}
         </p>
       </div>
-      {!selfMode && <OldRecordLookup regnumber={student.regnumber} />}
       </>
     );
   }
