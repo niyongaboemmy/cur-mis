@@ -48,6 +48,7 @@ import { useAcademicScope } from "@/hooks/useAcademicScope";
 import ScopeGate from "@/components/layout/ScopeGate";
 import ModuleRequestGate from "@/components/layout/ModuleRequestGate";
 import { useSystemBasics } from "@/hooks/useSystemBasics";
+import { useActivityTracking } from "@/hooks/useActivityTracking";
 
 import {
   Link,
@@ -925,6 +926,13 @@ const ADMIN_TREE: NavNode[] = [
     to: "/logs",
     permissions: [PERMISSIONS.VIEW_SYSTEM_LOGS],
   },
+  {
+    id: "user-activity",
+    label: "User activity",
+    icon: Activity,
+    to: "/admin/user-activity",
+    permissions: [PERMISSIONS.VIEW_SYSTEM_LOGS],
+  },
   // Help Centre — no `permissions`, so it survives every role filter. A user
   // who cannot reach the guides is exactly the user who needs them.
   {
@@ -1323,6 +1331,7 @@ function findActiveEntry(
 
 export default function MainLayout() {
   const location = useLocation();
+  useActivityTracking();
   // Loaded inside another page's iframe (e.g. Finance > Billing): the outer
   // shell already shows the navigation, so this copy hides its own sidebar.
   const framed = typeof window !== "undefined" && window.self !== window.top;

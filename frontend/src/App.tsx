@@ -141,6 +141,7 @@ import RevaluationsPage from "@/pages/exam/RevaluationsPage";
 // Placeholders
 import ProgramsPage from "@/pages/placeholders/ProgramsPage";
 import LogsPage from "@/pages/placeholders/LogsPage";
+import UserActivityPage from "@/pages/admin/UserActivityPage";
 import ComingSoonPage from "@/pages/placeholders/ComingSoonPage";
 // Teacher (lecturer) self-service portal
 import TeacherDashboardPage from "@/pages/teacher/TeacherDashboardPage";
@@ -1091,6 +1092,7 @@ function App() {
                 }
               >
                 <Route path="/logs" element={<LogsPage />} />
+                <Route path="/admin/user-activity" element={<UserActivityPage />} />
               </Route>
 
               {/* ── Attendance ── */}

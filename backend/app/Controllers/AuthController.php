@@ -8,6 +8,7 @@ use Core\Request;
 use Core\Response;
 use App\Services\AuthService;
 use App\Services\SystemLogService;
+use App\Services\UserActivityService;
 use App\Helpers\ValidationHelper;
 
 class AuthController extends BaseController
@@ -68,6 +69,9 @@ class AuthController extends BaseController
 
         $user = $result['data']['user'] ?? [];
         SystemLogService::log('LOGIN', 'AUTH', "Successful login: {$data['email']}.", isset($user['id']) ? (int) $user['id'] : null, 'user', null, $user ?: null);
+        if (isset($user['id'])) {
+            UserActivityService::startSession((int) $user['id']);
+        }
         $this->success($response, $result['data'], 'Verification successful.');
     }
 
@@ -189,6 +193,9 @@ class AuthController extends BaseController
     {
         $actor = (array) $request->param('_auth_user');
         SystemLogService::log('LOGOUT', 'AUTH', "User logged out: " . ($actor['email'] ?? 'unknown') . ".", isset($actor['id']) ? (int) $actor['id'] : null, 'user', null, $actor ?: null);
+        if (isset($actor['id'])) {
+            UserActivityService::endSession((int) $actor['id']);
+        }
         $this->success($response, null, 'Logged out successfully.');
     }
 
