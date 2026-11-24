@@ -32,7 +32,9 @@
 --    code, so no new course is created:
 --        97   -> 165    (IACC 2212) — 165 was later deleted on live; where it
 --                       is gone, the one module left in `modules` with code
---                       IACC2212 is used instead (stop if none or several).
+--                       IACC2212 is used instead (stop if several). If none
+--                       is left at all (live), 97 itself is copied from
+--                       `modules_1` in step 2 and keeps its own links.
 --        102  -> 170    (MECO2221)  — only where 102 has been deleted from
 --                       `modules` and its links were left behind (live, after
 --                       this file was first written). Same fallback as 97.
@@ -103,10 +105,18 @@ PREPARE s FROM @stmt; EXECUTE s; DEALLOCATE PREPARE s;
 -- ── 1. Resolve the targets, then guard: no unexpected orphans, every target exists
 
 -- IACC 2212: module 165, or else the only module in `modules` with that code.
+-- If `modules` has no IACC2212 at all (live: 165 and 1940 were both deleted),
+-- keep module 97 itself: step 2 copies it from `modules_1` like the 7 others,
+-- and @s97 = -1 so step 3 does not move (or de-duplicate away) its own links.
 SET @t97 := IF(EXISTS (SELECT 1 FROM `modules` WHERE `module_id` = 165), 165,
                (SELECT MIN(`module_id`) FROM `modules`
                  WHERE REPLACE(TRIM(`module_code`), ' ', '') = 'IACC2212'
                 HAVING COUNT(*) = 1));
+SET @copy97 := IF(@t97 IS NULL
+                  AND NOT EXISTS (SELECT 1 FROM `modules` WHERE REPLACE(TRIM(`module_code`), ' ', '') = 'IACC2212')
+                  AND EXISTS (SELECT 1 FROM `modules_1` WHERE `module_id` = 97), 97, -1);
+SET @t97 := IF(@copy97 = 97, 97, @t97);
+SET @s97 := IF(@t97 = 97, -1, 97);
 
 -- MECO2221: move module 102's links only where 102 itself is gone from
 -- `modules` (-1 matches no row). Target 170, or else the only module left
@@ -141,7 +151,7 @@ SET @abort := IF(@unexpected > 0 OR @missing_target > 0,
   'SELECT 1');
 PREPARE s FROM @abort; EXECUTE s; DEALLOCATE PREPARE s;
 
--- ── 2. Copy the 7 modules with no code clash from modules_1 ─────────────────
+-- ── 2. Copy the 7 modules with no code clash from modules_1 (plus 97, see step 1)
 
 INSERT INTO `modules`
     (`module_id`, `module_name`, `module_code`, `module_credits`, `department`,
@@ -149,7 +159,7 @@ INSERT INTO `modules`
 SELECT `module_id`, `module_name`, `module_code`, `module_credits`, `department`,
        `d_option`, `level`, `hours`, `price`, `author`, `school_id`, `status`
 FROM `modules_1`
-WHERE `module_id` IN (336, 356, 357, 569, 959, 1145, 1483)
+WHERE `module_id` IN (336, 356, 357, 569, 959, 1145, 1483, @copy97)
   AND `module_id` NOT IN (SELECT `module_id` FROM `modules`);
 
 -- ── 2b. Release the two keys that step 3 moves rows under ─────────────────
@@ -171,11 +181,12 @@ PREPARE s FROM @stmt; EXECUTE s; DEALLOCATE PREPARE s;
 
 -- ── 3. Re-point the 7 duplicate modules to the existing module with the same code
 
--- 97 -> @t97 (IACC 2212: 165, or the one module left with that code)
-DELETE FROM `module_programs` WHERE `module_id` = 97 AND `option_id` IN (SELECT `option_id` FROM (SELECT `option_id` FROM `module_programs` WHERE `module_id` = @t97) t);
-UPDATE `module_programs` SET `module_id` = @t97 WHERE `module_id` = 97;
-DELETE FROM `module_levels` WHERE `module_id` = 97 AND `level_id` IN (SELECT `level_id` FROM (SELECT `level_id` FROM `module_levels` WHERE `module_id` = @t97) t);
-UPDATE `module_levels` SET `module_id` = @t97 WHERE `module_id` = 97;
+-- 97 -> @t97 (IACC 2212: 165, or the one module left with that code;
+-- @s97 is -1 where 97 is kept as the IACC 2212 module, so nothing moves)
+DELETE FROM `module_programs` WHERE `module_id` = @s97 AND `option_id` IN (SELECT `option_id` FROM (SELECT `option_id` FROM `module_programs` WHERE `module_id` = @t97) t);
+UPDATE `module_programs` SET `module_id` = @t97 WHERE `module_id` = @s97;
+DELETE FROM `module_levels` WHERE `module_id` = @s97 AND `level_id` IN (SELECT `level_id` FROM (SELECT `level_id` FROM `module_levels` WHERE `module_id` = @t97) t);
+UPDATE `module_levels` SET `module_id` = @t97 WHERE `module_id` = @s97;
 
 -- 106 -> 174 (PRME 2221)
 DELETE FROM `module_programs` WHERE `module_id` = 106 AND `option_id` IN (SELECT `option_id` FROM (SELECT `option_id` FROM `module_programs` WHERE `module_id` = 174) t);
