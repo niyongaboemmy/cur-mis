@@ -365,7 +365,7 @@ export const teacherService = {
    * its own scoped endpoint — it only accepts modules you actually teach.
    */
   enrolStudents: (moduleId: number, regnumbers: string[], signal?: AbortSignal, termId?: number) =>
-    api.post<{ added: number; already: number }>(
+    api.post<{ added: number; already: number; unknown?: string[] }>(
       `/api/teacher/courses/${moduleId}/students`
         + (termId ? `?term_id=${termId}` : ''),
       { regnumbers }, signal,

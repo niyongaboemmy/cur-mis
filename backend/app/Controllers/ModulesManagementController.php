@@ -543,6 +543,15 @@ class ModulesManagementController extends BaseController
                 continue;
             }
 
+            // Even a forced registration needs a real student: `force` skips the
+            // eligibility rules, not the existence check, so a mistyped number
+            // from a marks sheet cannot register someone who does not exist.
+            if (!$this->registrations->db()->fetchOne('SELECT 1 AS ok FROM `student` WHERE regnumber = ? LIMIT 1', [$regnumber])) {
+                $errors[] = ['regnumber' => $regnumber, 'reason' => 'no student has this registration number'];
+                $skipped++;
+                continue;
+            }
+
             if (!$force) {
                 $check = $this->checkEligibility($regnumber, $moduleId, $termId);
                 if ($check['ok'] !== true) {

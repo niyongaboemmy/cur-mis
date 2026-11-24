@@ -353,9 +353,11 @@ class TeacherController extends BaseController
             $this->error($response, 'A non-empty `regnumbers` array is required.', 422);
         }
 
-        // Validate every regnumber up-front so a bad one cannot leave a partial
-        // enrolment behind.
-        $clean = [];
+        // Enrol every registration number that matches a student and report the
+        // rest. "Enrol all" from a marks upload sends the whole sheet, and one
+        // mistyped number (an "O" for a zero) used to refuse every student on it.
+        $clean   = [];
+        $unknown = [];
         foreach ($regs as $r) {
             $reg = trim((string)$r);
             if ($reg === '') {
@@ -366,12 +368,19 @@ class TeacherController extends BaseController
                 [$reg]
             );
             if (!$exists) {
-                $this->error($response, "No student found with registration number \"{$reg}\".", 422);
+                $unknown[$reg] = true;
+                continue;
             }
             $clean[$reg] = true;
         }
         if ($clean === []) {
-            $this->error($response, 'No valid registration numbers supplied.', 422);
+            $this->error(
+                $response,
+                $unknown
+                    ? 'No student found with registration number ' . implode(', ', array_map(static fn ($u) => "\"{$u}\"", array_keys($unknown))) . '.'
+                    : 'No valid registration numbers supplied.',
+                422
+            );
         }
 
         $added = 0;
@@ -409,7 +418,14 @@ class TeacherController extends BaseController
         if ($already > 0) {
             $msg .= " {$already} already registered.";
         }
-        $this->success($response, ['added' => $added, 'already' => $already], $msg);
+        if ($unknown) {
+            $msg .= ' ' . count($unknown) . ' not found.';
+        }
+        $this->success($response, [
+            'added'   => $added,
+            'already' => $already,
+            'unknown' => array_keys($unknown),
+        ], $msg);
     }
 
     /**

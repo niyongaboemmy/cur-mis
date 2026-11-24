@@ -1184,10 +1184,12 @@ export function MarksEditor({
       }
       const res = await teacherService.enrolStudents(moduleId, regs, undefined, writeTermId)
       const added = Number((res.data as any)?.added ?? 0)
+      // Registration numbers matching no student (e.g. a letter O typed for a zero).
+      const unknown: string[] = (res.data as any)?.unknown ?? []
       return {
         created: added,
         skipped: Number((res.data as any)?.already ?? 0),
-        errors: [] as Array<{ regnumber: string; reason: string }>,
+        errors: unknown.map((regnumber) => ({ regnumber, reason: 'no student has this registration number' })),
       }
     },
     onSuccess: async (data: any) => {
