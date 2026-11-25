@@ -59,6 +59,45 @@ const num = (v: unknown): number | null => {
 const toStr = (v: unknown): string =>
   v === null || v === undefined || v === '' ? '' : String(v)
 
+type MarkMaxes = { cat1: number; cat2: number; cat3: number; partial: number; cats: number; final: number }
+
+/** One mark the server would refuse: which cell, and why, in plain words. */
+interface RangeIssue { field: keyof RowDraft; message: string }
+
+/**
+ * The same range rule the server applies on save (ModuleMarksController::
+ * collectRangeErrors), run in the browser so a bad mark is pointed at the
+ * moment it lands in the grid — typically from an uploaded sheet, since typing
+ * is already capped by the cell. The server refuses the WHOLE save when any
+ * one row breaks it, so without this the user only ever saw "some marks are
+ * outside their allowed range" with no idea which.
+ */
+const rangeIssuesFor = (d: RowDraft, maxes: MarkMaxes): RangeIssue[] => {
+  const checks: Array<[keyof RowDraft, number, string]> = [
+    ['cats',    maxes.cats,    'CAT'],
+    ['cat1',    maxes.cat1,    'CAT1'],
+    ['cat2',    maxes.cat2,    'CAT2'],
+    ['cat3',    maxes.cat3,    'CAT3'],
+    ['partial', maxes.partial, 'Partial'],
+    ['exam1',   maxes.final,   'Exam'],
+    ['exam2',   maxes.final,   'Exam (2nd sitting)'],
+  ]
+  const out: RangeIssue[] = []
+  for (const [field, max, label] of checks) {
+    const raw = (d[field] ?? '').trim()
+    if (raw === '') continue
+    const n = Number(raw)
+    if (!Number.isFinite(n)) {
+      out.push({ field, message: `${label} "${raw}" is not a number` })
+    } else if (n < 0) {
+      out.push({ field, message: `${label} ${raw} is below 0` })
+    } else if (n > max) {
+      out.push({ field, message: `${label} ${raw} is above the maximum of ${max}` })
+    }
+  }
+  return out
+}
+
 // Grades come from the registry's configured scale (/academic/grading-scale)
 // via useGradingScale(), not from a ladder hardcoded here — see
 // @/utils/gradingScale and its server twin App\Helpers\GradingScale.
@@ -664,9 +703,7 @@ export function MarksEditor({
 
   /* ── per-row draft state ──────────────────────────────────────── */
   const [drafts, setDrafts] = useState<Record<string, RowDraft>>({})
-  const [maxes, setMaxes] = useState<{
-    cat1: number; cat2: number; cat3: number; partial: number; cats: number; final: number
-  }>({ cat1: 15, cat2: 15, cat3: 15, partial: 15, cats: 60, final: 40 })
+  const [maxes, setMaxes] = useState<MarkMaxes>({ cat1: 15, cat2: 15, cat3: 15, partial: 15, cats: 60, final: 40 })
 
   // Hydrate drafts ONCE per (module, term) selection — preserves user edits
   // (manual entry, CSV import, etc.) across refetches/refocuses that would
@@ -825,7 +862,11 @@ export function MarksEditor({
     return map
   }, [drafts, roster, maxes, scale])
 
+  // Out-of-range bookkeeping — see `rangeIssues` below.
+  const [serverRangeErrors, setServerRangeErrors] = useState<Record<string, string[]>>({})
+  const [issuesOnly, setIssuesOnly] = useState(false)
   const setCell = (reg: string, key: keyof RowDraft, val: string) => {
+    setServerRangeErrors((prev) => (Object.keys(prev).length ? {} : prev))
     setDrafts((prev) => ({
       ...prev,
       [reg]: {
@@ -852,6 +893,37 @@ export function MarksEditor({
   }, [drafts, roster])
   const dirtyCount = Object.values(dirty).filter(Boolean).length
 
+  /* ── out-of-range marks ──────────────────────────────────────────
+   * Only rows that will be sent (dirty, not exempted) are checked: those are
+   * the ones the server judges. `serverRangeErrors` keeps whatever the server
+   * itself reported on the last refused save, so a rule the browser does not
+   * know about still lands on the right row instead of only in a toast. */
+  const rangeIssues = useMemo<Record<string, RangeIssue[]>>(() => {
+    const out: Record<string, RangeIssue[]> = {}
+    for (const r of roster ?? []) {
+      if (r.is_exempted || !dirty[r.regnumber]) continue
+      const d = drafts[r.regnumber]; if (!d) continue
+      const found = rangeIssuesFor(d, maxes)
+      if (found.length) out[r.regnumber] = found
+    }
+    return out
+  }, [roster, drafts, dirty, maxes])
+  /** Every row with a problem → plain-language reasons, browser and server merged. */
+  const problemRows = useMemo<Record<string, string[]>>(() => {
+    const out: Record<string, string[]> = {}
+    for (const [reg, list] of Object.entries(rangeIssues)) out[reg] = list.map((x) => x.message)
+    // Server messages are cleared on every edit (setCell / import), so any
+    // still here describe the drafts exactly as they were last sent.
+    for (const [reg, list] of Object.entries(serverRangeErrors)) {
+      if (!out[reg] && dirty[reg]) out[reg] = list
+    }
+    return out
+  }, [rangeIssues, serverRangeErrors, dirty])
+  const problemCount = Object.keys(problemRows).length
+  // Leave the "problems only" view by itself once the last problem is fixed,
+  // rather than stranding the user on an empty table.
+  useEffect(() => { if (problemCount === 0 && issuesOnly) setIssuesOnly(false) }, [problemCount, issuesOnly])
+
   /** Rows displaying imported figures rather than CUR component scores. */
   const legacyCount = useMemo(
     () => Object.values(computed).filter((c) => c.legacy).length,
@@ -865,6 +937,17 @@ export function MarksEditor({
   /* ── save ─────────────────────────────────────────────────────── */
   const save = useMutation({
     mutationFn: () => {
+      // Refuse before sending when the browser can already see a mark the
+      // server would reject: the server rejects the whole sheet for one bad
+      // row, so the round trip would only end in the same message.
+      const bad = Object.keys(rangeIssues).length
+      if (bad > 0) {
+        setIssuesOnly(true)
+        return Promise.reject(new Error(
+          `${bad} row${bad === 1 ? ' has a mark' : 's have marks'} outside the allowed range — `
+          + `CAT 0–${maxes.cats}, Exam 0–${maxes.final}. Nothing was saved. The rows are highlighted in red.`,
+        ))
+      }
       const records: SaveMarkRecord[] = (roster ?? [])
         .map((r): SaveMarkRecord | null => {
           // Exempted rows are owned by the Student details → Curriculum view;
@@ -911,9 +994,31 @@ export function MarksEditor({
       // as dirty just because of decimal formatting, and so saved students
       // reappear with their marks instead of empty cells.
       hydratedKey.current = ''
+      setServerRangeErrors({})
+      setIssuesOnly(false)
       qc.invalidateQueries({ queryKey: ['marks', 'list', moduleId] })
     },
-    onError: (e: any) => toast.error(e?.response?.data?.message ?? e?.message ?? 'Save failed'),
+    onError: (e: any) => {
+      // A range refusal comes back keyed by registration number. Keep it so
+      // the rows can be highlighted and listed, rather than only toasted.
+      const errs = e?.response?.data?.errors
+      const isRange = e?.response?.status === 422 && errs && typeof errs === 'object' && !Array.isArray(errs)
+      if (isRange) {
+        const map: Record<string, string[]> = {}
+        for (const [reg, list] of Object.entries(errs)) {
+          map[reg] = Array.isArray(list) ? list.map(String) : [String(list)]
+        }
+        setServerRangeErrors(map)
+        setIssuesOnly(true)
+      }
+      // One id, so pressing Save again replaces the toast instead of stacking a second copy.
+      toast.error(
+        isRange
+          ? `${Object.keys(errs).length} row(s) have marks outside the allowed range. Nothing was saved — the rows are highlighted in red.`
+          : (e?.response?.data?.message ?? e?.message ?? 'Save failed'),
+        { id: 'marks-save', duration: 8000 },
+      )
+    },
   })
 
   const wf = useMutation({
@@ -1152,6 +1257,7 @@ export function MarksEditor({
     const stamp = `Uploaded ${new Date().toISOString().slice(0, 10)}`
     const suffix = note.trim() ? `${stamp} · ${note.trim()}` : stamp
     let applied = 0
+    setServerRangeErrors({})
     setDrafts((prev) => {
       const next = { ...prev }
       for (const e of preview.entries) {
@@ -1355,6 +1461,9 @@ export function MarksEditor({
     const filtered = all.filter((r: MarksRosterRow) => {
       // "With marks" — the sheet as a record of what was actually awarded,
       // without the eligibility-derived students padding it out.
+      // "Problems only" overrides the other filters: its whole point is to
+      // put every row that blocks the save in front of the user at once.
+      if (issuesOnly) return !!problemRows[r.regnumber]
       if (markedOnly && !r.mark_id) return false
       if (levelFilter > 0 && Number(r.student_level ?? 0) !== levelFilter) return false
       if (q) {
@@ -1392,7 +1501,7 @@ export function MarksEditor({
       const nb = `${b.lname ?? ''} ${b.fname ?? ''}`.trim()
       return collator.compare(na, nb) * dir
     })
-  }, [roster, rosterSearch, addedFrom, addedTo, markedOnly, levelFilter, sortKey, sortDir])
+  }, [roster, rosterSearch, addedFrom, addedTo, markedOnly, levelFilter, sortKey, sortDir, issuesOnly, problemRows])
 
   // Keep the printed row number tied to the student's position on the real
   // mark sheet, so filtering never renumbers the class.
@@ -1484,6 +1593,7 @@ export function MarksEditor({
         unknownRegs={unknownRegs}
         suggestions={regSuggestions}
         onUseSuggestion={applySuggestedReg}
+        maxes={maxes}
       />
 
       <div className={`items-start justify-between gap-3 flex-wrap ${embedded ? 'hidden' : 'flex'}`}>
@@ -1538,7 +1648,18 @@ export function MarksEditor({
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
                 {dirtyCount} row{dirtyCount === 1 ? '' : 's'} unsaved
               </span>
-            ) : (
+            ) : null}
+            {problemCount > 0 ? (
+              <button
+                type="button"
+                onClick={() => setIssuesOnly(true)}
+                className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300 font-semibold hover:bg-rose-100"
+                title="These rows stop the save. Click to see them."
+              >
+                <AlertCircle className="w-3.5 h-3.5" />
+                {problemCount} row{problemCount === 1 ? '' : 's'} to fix before saving
+              </button>
+            ) : dirtyCount > 0 ? null : (
               <span className="text-ink-400">All changes saved.</span>
             )}
           </div>
@@ -1584,7 +1705,9 @@ export function MarksEditor({
                 onClick={() => save.mutate()}
               >
                 {save.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                {save.isPending ? 'Saving…' : dirtyCount > 0 ? `Save ${dirtyCount} change${dirtyCount === 1 ? '' : 's'}` : 'Save marks'}
+                {save.isPending ? 'Saving…'
+                  : problemCount > 0 ? `Fix ${problemCount} row${problemCount === 1 ? '' : 's'} to save`
+                  : dirtyCount > 0 ? `Save ${dirtyCount} change${dirtyCount === 1 ? '' : 's'}` : 'Save marks'}
               </button>
             )}
           </div>
@@ -1713,6 +1836,16 @@ export function MarksEditor({
             </div>
           )}
 
+          {problemCount > 0 && (
+            <OutOfRangePanel
+              problems={problemRows}
+              roster={roster}
+              maxes={maxes}
+              issuesOnly={issuesOnly}
+              onToggle={() => setIssuesOnly((v) => !v)}
+            />
+          )}
+
           {roster.length === 0 ? (
             <div className="card p-8 text-center text-ink-400">
               No registered or eligible students were auto-detected for this module. Use
@@ -1798,8 +1931,12 @@ export function MarksEditor({
                     const isExempted = !!r.is_exempted
                     const rowDisabled = isLocked || isExempted
                     const missingInfo = isMissingInfo(r)
+                    const problems = problemRows[r.regnumber]
+                    const cellIssue = (f: keyof RowDraft) =>
+                      rangeIssues[r.regnumber]?.find((x) => x.field === f)?.message
                     return (
-                      <tr key={r.regnumber} className={`hover:bg-ink-50/50 dark:hover:bg-ink-700/20 ${
+                      <tr key={r.regnumber} data-reg-row={r.regnumber} className={`hover:bg-ink-50/50 dark:hover:bg-ink-700/20 ${
+                        problems ? 'bg-rose-50 dark:bg-rose-500/10' :
                         isExempted ? 'bg-violet-50/40 dark:bg-violet-500/10' :
                         missingInfo ? 'bg-rose-50/30 dark:bg-rose-500/5' :
                         dirty[r.regnumber] ? 'bg-amber-50/40 dark:bg-amber-500/5' : ''
@@ -1839,7 +1976,14 @@ export function MarksEditor({
                         </td>
                         <td className="px-2 py-2 border-r border-ink-100 dark:border-ink-700">{r.lname}</td>
                         <td className="px-2 py-2 text-center border-r border-ink-100 dark:border-ink-700">{r.sex ?? '—'}</td>
-                        <td className="px-2 py-2 font-mono border-r border-ink-100 dark:border-ink-700">{r.regnumber}</td>
+                        <td className="px-2 py-2 font-mono border-r border-ink-100 dark:border-ink-700">
+                          {r.regnumber}
+                          {problems && (
+                            <span className="block font-sans text-[10.5px] leading-tight text-rose-700 dark:text-rose-300 mt-0.5 max-w-[220px] whitespace-normal">
+                              {problems.join(' · ')}
+                            </span>
+                          )}
+                        </td>
                         <td className="px-2 py-2 border-r border-ink-100 dark:border-ink-700">
                           {r.student_program?.trim() ? r.student_program : (
                             <span className="text-rose-500 italic" title="No program on record for this student">missing</span>
@@ -1850,7 +1994,7 @@ export function MarksEditor({
                           {isExempted ? (
                             <span className="text-ink-400">—</span>
                           ) : (
-                            <NumCell cellId={`${i}:0`} value={d.cats} max={maxes.cats} disabled={rowDisabled} onChange={(v) => setCell(r.regnumber, 'cats', v)} />
+                            <NumCell cellId={`${i}:0`} value={d.cats} max={maxes.cats} invalid={cellIssue('cats')} disabled={rowDisabled} onChange={(v) => setCell(r.regnumber, 'cats', v)} />
                           )}
                         </td>
                         {/* The one exam mark. `exam2` is still carried in the
@@ -1858,7 +2002,7 @@ export function MarksEditor({
                             row survives editing here — it is entered through
                             Revaluations, not on this sheet. */}
                         <td className="px-1 py-1 text-center border-r border-ink-100 dark:border-ink-700">
-                          <NumCell cellId={`${i}:1`} value={d.exam1} max={maxes.final} disabled={rowDisabled} onChange={(v) => setCell(r.regnumber, 'exam1', v)} />
+                          <NumCell cellId={`${i}:1`} value={d.exam1} max={maxes.final} invalid={cellIssue('exam1')} disabled={rowDisabled} onChange={(v) => setCell(r.regnumber, 'exam1', v)} />
                         </td>
                         {/* CAT + exam, out of maxSum — NOT the exam mark on its
                             own, which is what the two sitting columns to the
@@ -2316,9 +2460,92 @@ function MaxField({
   )
 }
 
+/**
+ * Says, in words a lecturer can act on, why Save is refused: which rows, what
+ * is wrong with each, what the allowed range is, and that nothing was written.
+ * "Some marks are outside their allowed range" on its own named none of that.
+ */
+function OutOfRangePanel({
+  problems, roster, maxes, issuesOnly, onToggle,
+}: {
+  problems:   Record<string, string[]>
+  roster:     MarksRosterRow[]
+  maxes:      MarkMaxes
+  issuesOnly: boolean
+  onToggle:   () => void
+}) {
+  const regs  = Object.keys(problems)
+  const names = useMemo(() => {
+    const m = new Map<string, string>()
+    for (const r of roster) m.set(r.regnumber, `${r.fname ?? ''} ${r.lname ?? ''}`.trim())
+    return m
+  }, [roster])
+  const shown = regs.slice(0, 6)
+
+  const jumpTo = (reg: string) => {
+    const row = document.querySelector<HTMLElement>(`tr[data-reg-row="${CSS.escape(reg)}"]`)
+    if (!row) return
+    row.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    row.querySelector<HTMLInputElement>('input[aria-invalid="true"]')?.focus()
+  }
+
+  return (
+    <div className="rounded-xl border border-rose-200 dark:border-rose-500/30 bg-rose-50/70 dark:bg-rose-500/10 p-4 space-y-3" role="alert">
+      <div className="flex items-start gap-3">
+        <AlertCircle className="w-5 h-5 text-rose-600 dark:text-rose-300 shrink-0 mt-0.5" />
+        <div className="flex-1 min-w-0 space-y-1">
+          <p className="font-semibold text-rose-800 dark:text-rose-200 text-[13.5px]">
+            {regs.length} row{regs.length === 1 ? ' has a mark' : 's have marks'} the system cannot accept, so nothing has been saved yet.
+          </p>
+          <p className="text-[12.5px] text-rose-700/90 dark:text-rose-200/80">
+            Each mark must sit inside its column&apos;s range: <b>CAT 0 – {maxes.cats}</b> and <b>Exam 0 – {maxes.final}</b>.
+            A mark above that usually means the sheet has the total (out of 100) or a typo in that column.
+            The whole sheet is held back until every highlighted row is fixed, so no student ends up with half their marks saved.
+          </p>
+        </div>
+        <button className="btn-ghost btn-sm shrink-0 border border-rose-200 dark:border-rose-500/30" onClick={onToggle}>
+          <Filter className="w-3.5 h-3.5" />
+          {issuesOnly ? 'Show all rows' : `Show only these ${regs.length}`}
+        </button>
+      </div>
+
+      <ul className="grid gap-1.5 sm:grid-cols-2 text-[12px]">
+        {shown.map((reg) => (
+          <li key={reg}>
+            <button
+              type="button"
+              onClick={() => jumpTo(reg)}
+              className="w-full text-left rounded-lg bg-white/80 dark:bg-ink-800/60 border border-rose-100 dark:border-rose-500/20 px-2.5 py-1.5 hover:border-rose-300"
+              title="Go to this row"
+            >
+              <span className="font-mono font-semibold text-ink-800 dark:text-ink-100">{reg}</span>
+              {names.get(reg) && <span className="text-ink-500"> · {names.get(reg)}</span>}
+              <span className="block text-rose-700 dark:text-rose-300">{problems[reg].join(' · ')}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+      {regs.length > shown.length && (
+        <p className="text-[12px] text-rose-700/80 dark:text-rose-300/80">
+          …and {regs.length - shown.length} more. Use &ldquo;Show only these&rdquo; to list them all.
+        </p>
+      )}
+
+      <p className="text-[12px] text-ink-600 dark:text-ink-300">
+        <b>How to fix:</b> type the correct mark into each red cell and press Save again, or correct the file and import it again.
+        If a student&apos;s mark really is unknown, clear the cell.
+      </p>
+    </div>
+  )
+}
+
 function NumCell({
-  value, max, onChange, disabled, cellId,
-}: { value: string; max: number; onChange: (v: string) => void; disabled?: boolean; cellId?: string }) {
+  value, max, onChange, disabled, cellId, invalid,
+}: {
+  value: string; max: number; onChange: (v: string) => void; disabled?: boolean; cellId?: string
+  /** Why the current value would be refused on save; outlines the cell in red. */
+  invalid?: string
+}) {
   const clamp = (raw: string): string => {
     if (raw === '') return ''
     const n = Number(raw)
@@ -2351,13 +2578,18 @@ function NumCell({
       step="0.5"
       min={0}
       max={max}
-      className="input input-sm w-16 text-center"
+      className={`input input-sm w-16 text-center ${invalid ? '!border-rose-500 ring-2 ring-rose-400/60 text-rose-700 dark:text-rose-300 font-bold' : ''}`}
       placeholder="—"
+      title={invalid ? `${invalid}. Type the correct mark (0–${max}).` : `0 – ${max}`}
+      aria-invalid={invalid ? true : undefined}
       value={value}
       disabled={disabled}
       data-mark-cell={cellId}
       onChange={(e) => onChange(clamp(e.target.value))}
-      onBlur={(e) => onChange(clamp(e.target.value))}
+      // An out-of-range mark from an uploaded sheet is left as it is when the
+      // cell merely loses focus: quietly turning a 65 into 60 would be the
+      // system choosing the student's mark. It changes once the user types.
+      onBlur={(e) => { if (!invalid) onChange(clamp(e.target.value)) }}
       onFocus={(e) => e.currentTarget.select()}
       onKeyDown={onKeyDown}
     />
@@ -2862,7 +3094,7 @@ function matchImport(
 
 function ImportPreviewModal({
   preview, onCancel, onApprove, canEnroll, enrolling, onEnroll,
-  unknownRegs, suggestions, onUseSuggestion,
+  unknownRegs, suggestions, onUseSuggestion, maxes,
 }: {
   preview:  ImportPreview | null
   onCancel: () => void
@@ -2878,6 +3110,8 @@ function ImportPreviewModal({
   suggestions: Record<string, RegNumberSuggestion[]>
   /** Read this sheet row as the chosen real number instead. */
   onUseSuggestion: (sheetReg: string, realReg: string) => void
+  /** Column maxima, to flag uploaded marks the save would refuse. */
+  maxes: MarkMaxes
 }) {
   // Rows the user chose to leave as they are. A conflict defaults to taking
   // the uploaded value — that is why the file was uploaded — but every one of
@@ -2899,6 +3133,17 @@ function ImportPreviewModal({
     (e) => e.matched && e.changed && Object.values(e.current).some((v) => String(v ?? '') !== ''),
   ).length
   const takeCount = changedRegs.filter((r) => !keep.has(r)).length
+  // Rows whose uploaded marks fall outside the column range. They can still be
+  // taken — the user may prefer to fix them in the grid — but they will block
+  // Save until corrected, so say so here, before anything is applied.
+  // (Plain computation, not useMemo: this sits after the component's early return.)
+  const rangeByReg = new Map<string, RangeIssue[]>()
+  for (const e of entries) {
+    if (!e.matched || !e.changed) continue
+    const found = rangeIssuesFor(e.incoming, maxes)
+    if (found.length) rangeByReg.set(e.regnumber, found)
+  }
+  const outOfRangeTaken = [...rangeByReg.keys()].filter((r) => !keep.has(r)).length
   const cols: { k: keyof RowDraft; label: string }[] = [
     { k: 'cats', label: 'CAT' }, { k: 'exam1', label: 'EXAM' },
   ]
@@ -2937,6 +3182,14 @@ function ImportPreviewModal({
               <AlertCircle className="w-3 h-3" /> {noSuchStudent} number{noSuchStudent === 1 ? '' : 's'} match no student
             </span>
           )}
+          {rangeByReg.size > 0 && (
+            <span
+              className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full bg-rose-50 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300 font-semibold"
+              title={`CAT must be 0–${maxes.cats}, Exam 0–${maxes.final}`}
+            >
+              <AlertCircle className="w-3 h-3" /> {rangeByReg.size} row{rangeByReg.size === 1 ? '' : 's'} with marks out of range
+            </span>
+          )}
           {canEnroll && unmatchedRegs.length > 0 && (
             <button
               className="btn-primary btn-sm"
@@ -2949,6 +3202,17 @@ function ImportPreviewModal({
           )}
           <span className="ml-auto text-ink-400">{entries.length} row(s) read</span>
         </div>
+
+        {rangeByReg.size > 0 && (
+          <div className="px-5 py-2.5 border-b border-rose-100 dark:border-rose-500/20 bg-rose-50/60 dark:bg-rose-500/10 text-[12.5px] text-rose-800 dark:text-rose-200 flex items-start gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+            <span>
+              The marks in red are outside the allowed range (<b>CAT 0 – {maxes.cats}</b>, <b>Exam 0 – {maxes.final}</b>).
+              The sheet cannot be saved while they are there. Correct them in the file and import again, set those rows to
+              &ldquo;Existing&rdquo;, or approve and fix the red cells in the grid before saving.
+            </span>
+          </div>
+        )}
 
         <div className="flex-1 overflow-auto">
           <table className="w-full text-left text-[12.5px]">
@@ -2978,7 +3242,9 @@ function ImportPreviewModal({
             <tbody className="divide-y divide-ink-100 dark:divide-ink-700">
               {entries.map((e, i) => (
                 <tr key={i} className={e.matched
-                  ? (e.changed ? 'bg-emerald-50/30 dark:bg-emerald-500/5' : '')
+                  ? (rangeByReg.has(e.regnumber) && !keep.has(e.regnumber)
+                      ? 'bg-rose-50/60 dark:bg-rose-500/10'
+                      : e.changed ? 'bg-emerald-50/30 dark:bg-emerald-500/5' : '')
                   : 'bg-amber-50/30 dark:bg-amber-500/5'}>
                   <td className="px-3 py-1.5 whitespace-nowrap">
                     {e.matched
@@ -3034,10 +3300,16 @@ function ImportPreviewModal({
                     const before = e.current[c.k]
                     const after  = e.incoming[c.k]
                     const diff   = e.matched && before !== after
+                    const issue  = rangeByReg.get(e.regnumber)?.find((x) => x.field === c.k)
                     return (
                       <Fragment2 key={c.k}>
                         <td className="px-2 py-1.5 text-center text-ink-400 text-[11px]">{before || '—'}</td>
-                        <td className={`px-2 py-1.5 text-center text-[11px] ${diff ? 'font-bold text-emerald-700 dark:text-emerald-300' : 'text-ink-400'}`}>
+                        <td
+                          className={`px-2 py-1.5 text-center text-[11px] ${
+                            issue ? 'font-bold text-rose-700 dark:text-rose-300 underline decoration-wavy decoration-rose-400'
+                            : diff ? 'font-bold text-emerald-700 dark:text-emerald-300' : 'text-ink-400'}`}
+                          title={issue?.message}
+                        >
                           {after || '—'}
                         </td>
                       </Fragment2>
@@ -3102,6 +3374,11 @@ function ImportPreviewModal({
               </>
             )}
             <div className="ml-auto flex items-center gap-2">
+              {outOfRangeTaken > 0 && (
+                <span className="text-[11.5px] text-rose-700 dark:text-rose-300 max-w-[260px] text-right leading-tight">
+                  {outOfRangeTaken} of these will need fixing in the grid before Save works.
+                </span>
+              )}
               <button className="btn-ghost btn-sm" onClick={onCancel} disabled={applying}>Cancel</button>
               <button
                 className="btn-primary btn-sm"

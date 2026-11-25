@@ -889,9 +889,18 @@ class ModuleMarksController extends BaseController
         // the database on rows the user never saw fail.
         $rangeErrors = $this->collectRangeErrors($records);
         if ($rangeErrors !== []) {
+            // Name the rows in the message itself, so a caller that only shows
+            // the message (not the keyed `errors`) still tells the user where
+            // to look.
+            $n       = count($rangeErrors);
+            $firstReg = (string) array_key_first($rangeErrors);
+            $example = $firstReg . ' — ' . implode('; ', $rangeErrors[$firstReg]);
             $this->error(
                 $response,
-                'Some marks are outside their allowed range. Nothing was saved.',
+                sprintf(
+                    '%d row%s %s marks outside the allowed range (e.g. %s). Nothing was saved.',
+                    $n, $n === 1 ? '' : 's', $n === 1 ? 'has' : 'have', $example
+                ),
                 422,
                 $rangeErrors
             );
