@@ -2243,13 +2243,7 @@ class FeeService
 
     public function generateInvoiceNumber(): string
     {
-        $year = date('Y');
-        $row  = $this->db->fetchOne(
-            "SELECT COUNT(*) AS cnt FROM `fee_invoices` WHERE invoice_number LIKE ?",
-            ["INV-{$year}-%"]
-        );
-        $seq = str_pad((string)(((int)($row['cnt'] ?? 0)) + 1), 6, '0', STR_PAD_LEFT);
-        return "INV-{$year}-{$seq}";
+        return $this->invoiceModel->nextInvoiceNumber();
     }
 
     public function generateReceiptNumber(): string

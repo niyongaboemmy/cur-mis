@@ -6,6 +6,7 @@ namespace App\Controllers;
 
 use App\Helpers\LecturerScope;
 use App\Helpers\LevelHelper;
+use App\Helpers\RegNumberSuggester;
 use App\Services\AuthService;
 use App\Services\SystemLogService;
 use Core\Database;
@@ -373,14 +374,14 @@ class TeacherController extends BaseController
             }
             $clean[$reg] = true;
         }
-        if ($clean === []) {
-            $this->error(
-                $response,
-                $unknown
-                    ? 'No student found with registration number ' . implode(', ', array_map(static fn ($u) => "\"{$u}\"", array_keys($unknown))) . '.'
-                    : 'No valid registration numbers supplied.',
-                422
-            );
+        // Closest real numbers for the ones that matched no student, so the
+        // marks review can offer "did you mean …?" instead of a dead end.
+        $suggestions = $unknown
+            ? (new RegNumberSuggester($this->db))->suggestMany(array_keys($unknown))
+            : [];
+
+        if ($clean === [] && !$unknown) {
+            $this->error($response, 'No valid registration numbers supplied.', 422);
         }
 
         $added = 0;
@@ -405,12 +406,26 @@ class TeacherController extends BaseController
                 }
                 continue;
             }
-            $this->db->execute(
-                "INSERT INTO `module_registrations`
-                    (module_id, student_regnumber, academic_term_id, status)
-                 VALUES (?,?,?, 'registered')",
-                [$moduleId, $reg, $termId]
-            );
+            try {
+                $this->db->execute(
+                    "INSERT INTO `module_registrations`
+                        (module_id, student_regnumber, academic_term_id, status)
+                     VALUES (?,?,?, 'registered')",
+                    [$moduleId, $reg, $termId]
+                );
+            } catch (\PDOException $e) {
+                // Module FK still on the legacy `modules_1` copy — see
+                // migration 2026_10_16_005_module_fix_all.
+                if (($e->errorInfo[1] ?? null) === 1452 && str_contains($e->getMessage(), 'module')) {
+                    $this->error(
+                        $response,
+                        'This module cannot take registrations yet: the database still links registrations to the old module table. '
+                        . 'Ask the system administrator to run migration 2026_10_16_005_module_fix_all.',
+                        409
+                    );
+                }
+                throw $e;
+            }
             $added++;
         }
 
@@ -425,6 +440,7 @@ class TeacherController extends BaseController
             'added'   => $added,
             'already' => $already,
             'unknown' => array_keys($unknown),
+            'suggestions' => $suggestions,
         ], $msg);
     }
 

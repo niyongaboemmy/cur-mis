@@ -350,9 +350,25 @@ export interface StudentCoverageResponse {
 
 const apiBase = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '') + '/api'
 
+/** A real student whose number is close to one typed on a marks sheet. */
+export interface RegNumberSuggestion {
+  regnumber: string
+  name:      string
+}
+
 export const marksService = {
   markableModules: (params: { academic_term_id?: number | string } = {}) =>
     api.get<MarkableModule[]>('/marks/markable-modules', params as Record<string, unknown>),
+
+  /**
+   * For marks-sheet rows that matched nobody on the roster: which numbers
+   * belong to no student, and the closest real numbers for each (a wrong
+   * intake year, a letter O for a zero…). Suggestions only — nothing changes.
+   */
+  regnumberSuggestions: (regnumbers: string[]) =>
+    api.post<{ unknown: string[]; suggestions: Record<string, RegNumberSuggestion[]> }>(
+      '/marks/regnumber-suggestions', { regnumbers },
+    ),
 
   list: (params: { module_id: number; academic_term_id: number }) =>
     api.get<MarksListResponse>('/marks', params as Record<string, unknown>),

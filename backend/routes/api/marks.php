@@ -45,6 +45,17 @@ $router->group('/api/marks', function ($router) {
         Permissions::MANAGE_MODULE_MARKS,
     ])]);
 
+    // "Did you mean …?" for marks-sheet rows that matched nobody. Open to
+    // whoever may enrol from the marks review — markers and the registry —
+    // mirroring canEnroll in ModulesMarksPage.
+    $router->group('', function ($r) {
+        $r->post('/regnumber-suggestions', [ModuleMarksController::class, 'regnumberSuggestions']);
+    }, [new MaybePermissionMiddleware([
+        Permissions::RECORD_MODULE_MARKS,
+        Permissions::MANAGE_MODULE_MARKS,
+        Permissions::MANAGE_MODULE_REGISTRATIONS,
+    ])]);
+
     // Which modules a programme's transcript prints. Reading is open to anyone
     // who may read marks; changing it alters what a signed document says, so
     // it is restricted to the registry and academics.

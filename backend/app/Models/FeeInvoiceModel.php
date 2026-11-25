@@ -14,6 +14,50 @@ class FeeInvoiceModel extends BaseModel
         'module_id', 'created_by',
     ];
 
+    /**
+     * Next free "INV-<year>-<seq>" number: the highest sequence already used
+     * this year plus one. It used to be COUNT(*)+1, which repeats an existing
+     * number as soon as any invoice is deleted or numbered out of order — on
+     * live that made every admission invoice collide with the same number
+     * for days (1062 on uq_fi_invoice_number).
+     */
+    public function nextInvoiceNumber(): string
+    {
+        $prefix = 'INV-' . date('Y') . '-';
+        $row = $this->db->fetchOne(
+            "SELECT MAX(CAST(SUBSTRING(invoice_number, ?) AS UNSIGNED)) AS seq
+               FROM `fee_invoices`
+              WHERE invoice_number LIKE ?
+                AND SUBSTRING(invoice_number, ?) REGEXP '^[0-9]+$'",
+            [\strlen($prefix) + 1, $prefix . '%', \strlen($prefix) + 1]
+        );
+        $seq = ((int)($row['seq'] ?? 0)) + 1;
+        return $prefix . str_pad((string)$seq, 6, '0', STR_PAD_LEFT);
+    }
+
+    /**
+     * Insert, and if two requests picked the same generated invoice number at
+     * the same moment, take a fresh one and try again instead of failing the
+     * whole billing step. Only generated "INV-" numbers are retried; any other
+     * duplicate is a real error and is rethrown.
+     */
+    public function create(array $data): string
+    {
+        for ($attempt = 1; ; $attempt++) {
+            try {
+                return parent::create($data);
+            } catch (\PDOException $e) {
+                $isNumberClash = ($e->errorInfo[1] ?? null) === 1062
+                    && str_contains($e->getMessage(), 'uq_fi_invoice_number')
+                    && str_starts_with((string)($data['invoice_number'] ?? ''), 'INV-');
+                if (!$isNumberClash || $attempt >= 5) {
+                    throw $e;
+                }
+                $data['invoice_number'] = $this->nextInvoiceNumber();
+            }
+        }
+    }
+
     /** @param array{student_id?:string,academic_year_id?:int,semester?:int,fee_type?:string,status?:string} $filters */
     public function listWithDetails(array $filters = []): array
     {

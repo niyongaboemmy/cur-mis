@@ -15,6 +15,7 @@ use App\Models\ModuleRegistrationModel;
 use App\Helpers\ValidationHelper;
 use App\Helpers\InstructorDirectory;
 use App\Helpers\LecturerScope;
+use App\Helpers\RegNumberSuggester;
 
 /**
  * Modules Management — covers the four pillars:
@@ -561,13 +562,43 @@ class ModulesManagementController extends BaseController
                 }
             }
 
-            $this->registrations->create([
-                'module_id'         => $moduleId,
-                'student_regnumber' => $regnumber,
-                'academic_term_id'  => $termId,
-                'status'            => 'registered',
-            ]);
+            try {
+                $this->registrations->create([
+                    'module_id'         => $moduleId,
+                    'student_regnumber' => $regnumber,
+                    'academic_term_id'  => $termId,
+                    'status'            => 'registered',
+                ]);
+            } catch (\PDOException $e) {
+                // 1452 here means the module foreign key still points at the
+                // legacy `modules_1` copy, which has no row for modules created
+                // after it. Say so instead of a bare "Server error.".
+                if (($e->errorInfo[1] ?? null) === 1452 && str_contains($e->getMessage(), 'module')) {
+                    $this->error(
+                        $response,
+                        'This module cannot take registrations yet: the database still links registrations to the old module table. '
+                        . 'Ask the system administrator to run migration 2026_10_16_005_module_fix_all.',
+                        409
+                    );
+                }
+                throw $e;
+            }
             $created++;
+        }
+
+        // Offer the closest real numbers for the ones that matched no student.
+        $unknown = array_column(
+            array_filter($errors, static fn ($e) => $e['reason'] === 'no student has this registration number'),
+            'regnumber'
+        );
+        if ($unknown !== []) {
+            $suggestions = (new RegNumberSuggester($this->registrations->db()))->suggestMany($unknown);
+            foreach ($errors as &$err) {
+                if (isset($suggestions[$err['regnumber']])) {
+                    $err['suggestions'] = $suggestions[$err['regnumber']];
+                }
+            }
+            unset($err);
         }
 
         $this->success($response, [

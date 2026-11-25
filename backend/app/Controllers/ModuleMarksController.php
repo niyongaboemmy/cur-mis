@@ -16,6 +16,7 @@ use App\Helpers\GradingScale;
 use App\Services\AuthService;
 use App\Services\DegreeClassificationService;
 use App\Helpers\MarksTemplateExcel;
+use App\Helpers\RegNumberSuggester;
 use App\Services\SystemLogService;
 
 /**
@@ -292,6 +293,40 @@ class ModuleMarksController extends BaseController
 
     /* ── List marks for module + term (full roster) ────────────────────── */
 
+
+    /**
+     * POST /api/marks/regnumber-suggestions   { regnumbers: string[] }
+     *
+     * For the rows of an uploaded marks sheet that matched nobody on the
+     * roster: which numbers belong to no student at all, and the closest real
+     * numbers for those ("1CUR25AK012117" → "1CUR26AK012117"). The review
+     * shows them as "did you mean …?" — nothing is changed here.
+     */
+    public function regnumberSuggestions(Request $request, Response $response): never
+    {
+        $regs = $request->body()['regnumbers'] ?? null;
+        if (!is_array($regs)) {
+            $this->error($response, 'A `regnumbers` array is required.', 422);
+        }
+        // One sheet's unmatched rows — bounded so this cannot become a
+        // student-directory scraper.
+        $regs = array_slice(array_values(array_unique(array_filter(
+            array_map(static fn ($r) => trim((string)$r), $regs),
+            static fn ($r) => $r !== ''
+        ))), 0, 200);
+
+        $unknown = [];
+        foreach ($regs as $reg) {
+            if (!$this->db->fetchOne('SELECT 1 AS ok FROM `student` WHERE regnumber = ? LIMIT 1', [$reg])) {
+                $unknown[] = $reg;
+            }
+        }
+
+        $this->success($response, [
+            'unknown'     => $unknown,
+            'suggestions' => $unknown ? (new RegNumberSuggester($this->db))->suggestMany($unknown) : (object)[],
+        ], 'Suggestions fetched.');
+    }
 
     /**
      * GET /api/marks/template?module_id=&academic_term_id=

@@ -11,7 +11,7 @@ import {
   UserPlus, Search, X, Download, Upload, AlertTriangle,
   Filter, BookOpen, ChevronLeft, AlertCircle,
   CalendarClock, UserSearch, FileSpreadsheet,
-  ArrowUp, ArrowDown, ArrowUpDown,
+  ArrowUp, ArrowDown, ArrowUpDown, Wand2,
 } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import toast from 'react-hot-toast'
@@ -34,6 +34,7 @@ import {
 } from '@/services/marksService'
 import { moduleRegistrationService } from '@/services/modulesService'
 import { teacherService } from '@/services/teacherService'
+import type { RegNumberSuggestion } from '@/services/marksService'
 
 interface RowDraft {
   /** CAT total out of 60 — what CUR actually records and what the sheet asks
@@ -1002,6 +1003,13 @@ export function MarksEditor({
   const [preview, setPreview] = useState<ImportPreview | null>(null)
   // The parsed sheet, kept so it can be re-matched once students are enrolled.
   const [importSource, setImportSource] = useState<ImportSource | null>(null)
+  // "Did you mean …?" for sheet rows whose number belongs to no student.
+  // regAliases maps a sheet number (normalised) to the real number the user
+  // picked; nothing is re-keyed until they pick one.
+  const [regAliases, setRegAliases] = useState<Record<string, string>>({})
+  const [regSuggestions, setRegSuggestions] = useState<Record<string, RegNumberSuggestion[]>>({})
+  const [unknownRegs, setUnknownRegs] = useState<Set<string>>(new Set())
+  const lookedUpRegs = useRef<Set<string>>(new Set())
 
   const handleImportFile = async (file: File) => {
     if (!roster) return
@@ -1096,7 +1104,7 @@ export function MarksEditor({
         rows,
         cols: { iReg, iCats, iCat1, iCat2, iCat3, iPartial, iExam1, iExam2, iRemarks },
       }
-      const built = matchImport(source, roster, drafts)
+      const built = matchImport(source, roster, drafts, {})
 
       if (built.entries.length === 0) {
         toast.error('The file had no usable rows.')
@@ -1104,6 +1112,10 @@ export function MarksEditor({
       }
 
       setImportSource(source)
+      setRegAliases({})
+      setRegSuggestions({})
+      setUnknownRegs(new Set())
+      lookedUpRegs.current = new Set()
       setPreview(built)
     } catch (err: any) {
       toast.error(err?.message ?? 'Could not parse the file.')
@@ -1186,16 +1198,41 @@ export function MarksEditor({
       const added = Number((res.data as any)?.added ?? 0)
       // Registration numbers matching no student (e.g. a letter O typed for a zero).
       const unknown: string[] = (res.data as any)?.unknown ?? []
+      const suggestions: Record<string, RegNumberSuggestion[]> = (res.data as any)?.suggestions ?? {}
       return {
         created: added,
         skipped: Number((res.data as any)?.already ?? 0),
-        errors: unknown.map((regnumber) => ({ regnumber, reason: 'no student has this registration number' })),
+        errors: unknown.map((regnumber) => ({
+          regnumber,
+          reason: 'no student has this registration number',
+          suggestions: suggestions[regnumber],
+        })),
       }
     },
     onSuccess: async (data: any) => {
+      const errors: Array<{ regnumber: string; reason: string; suggestions?: RegNumberSuggestion[] }> = data?.errors ?? []
+      const notFound = errors.filter((e) => e.reason === 'no student has this registration number')
+      if (notFound.length) {
+        // Shown on the rows themselves ("did you mean …?"), not as a toast
+        // per number.
+        setUnknownRegs((prev) => new Set([...prev, ...notFound.map((e) => e.regnumber)]))
+        setRegSuggestions((prev) => {
+          const next = { ...prev }
+          notFound.forEach((e) => { if (e.suggestions?.length) next[e.regnumber] = e.suggestions })
+          return next
+        })
+      }
       if (data?.created > 0) toast.success(`${data.created} student${data.created === 1 ? '' : 's'} added to the module`)
-      else toast(`Nothing added — ${data?.skipped ?? 0} skipped`)
-      data?.errors?.slice(0, 5).forEach((e: any) => toast.error(`${e.regnumber}: ${e.reason}`, { duration: 5000 }))
+      else if (!notFound.length) toast(`Nothing added — ${data?.skipped ?? 0} already on the module`)
+      if (notFound.length) {
+        toast.error(
+          `${notFound.length} registration number${notFound.length === 1 ? '' : 's'} on the sheet match${notFound.length === 1 ? 'es' : ''} no student. ` +
+          'Check the rows marked "No such student" — most have a suggested correction.',
+          { duration: 7000 },
+        )
+      }
+      errors.filter((e) => !notFound.includes(e)).slice(0, 5)
+        .forEach((e) => toast.error(`${e.regnumber}: ${e.reason}`, { duration: 5000 }))
 
       const fresh = await listQ.refetch()
       const freshBase = fresh.data?.data?.roster
@@ -1203,11 +1240,41 @@ export function MarksEditor({
         const seen = new Set(freshBase.map((r) => r.regnumber))
         const merged = [...freshBase, ...Object.values(extras).filter((r) => !seen.has(r.regnumber))]
         // Functional update: the review may have been closed while this ran.
-        setPreview((prev) => (prev ? matchImport(importSource, merged, drafts) : prev))
+        setPreview((prev) => (prev ? matchImport(importSource, merged, drafts, regAliases) : prev))
       }
     },
     onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Could not add students to the module'),
   })
+
+  // As soon as the review shows unmatched rows, ask which of those numbers
+  // belong to no student at all and what the closest real numbers are, so the
+  // reviewer sees "did you mean …?" before trying to enrol anyone.
+  useEffect(() => {
+    if (!preview || !canEnroll) return
+    const pending = preview.entries
+      .filter((e) => !e.matched && !lookedUpRegs.current.has(e.regnumber))
+      .map((e) => e.regnumber)
+    if (!pending.length) return
+    pending.forEach((r) => lookedUpRegs.current.add(r))
+    marksService.regnumberSuggestions(pending)
+      .then((res) => {
+        const unknown = res.data?.unknown ?? []
+        const found = res.data?.suggestions ?? {}
+        if (unknown.length) setUnknownRegs((prev) => new Set([...prev, ...unknown]))
+        if (Object.keys(found).length) setRegSuggestions((prev) => ({ ...prev, ...found }))
+      })
+      // Suggestions are a help, not a gate: the review still works without them.
+      .catch(() => pending.forEach((r) => lookedUpRegs.current.delete(r)))
+  }, [preview, canEnroll])
+
+  /** The reviewer picked a suggested number for a sheet row: re-match the
+   *  sheet with that row read as the real student. */
+  const applySuggestedReg = (sheetReg: string, realReg: string) => {
+    if (!importSource || !roster) return
+    const next = { ...regAliases, [normReg(sheetReg)]: realReg }
+    setRegAliases(next)
+    setPreview(matchImport(importSource, roster, drafts, next))
+  }
 
   // Confirming locks the sheet and re-opening it is the only way back — both are
   // registry acts, deliberately NOT implied by being able to record marks. The
@@ -1414,6 +1481,9 @@ export function MarksEditor({
         canEnroll={canEnroll && !isLocked}
         enrolling={enrollMut.isPending}
         onEnroll={(regs) => enrollMut.mutate(regs)}
+        unknownRegs={unknownRegs}
+        suggestions={regSuggestions}
+        onUseSuggestion={applySuggestedReg}
       />
 
       <div className={`items-start justify-between gap-3 flex-wrap ${embedded ? 'hidden' : 'flex'}`}>
@@ -2695,6 +2765,9 @@ function sameDraft(a: RowDraft, b: RowDraft): boolean {
 
 interface ImportEntry {
   regnumber: string
+  /** The number as typed on the sheet, when the reviewer replaced it with a
+   *  suggested one. */
+  sheetReg?: string
   fname:     string
   lname:     string
   matched:   boolean
@@ -2730,6 +2803,8 @@ function matchImport(
   source: ImportSource,
   roster: MarksRosterRow[],
   drafts: Record<string, RowDraft>,
+  /** Sheet number (normalised) → real number the reviewer picked instead. */
+  aliases: Record<string, string>,
 ): ImportPreview {
   const { rows, cols } = source
   const { iReg, iCats, iCat1, iCat2, iCat3, iPartial, iExam1, iExam2, iRemarks } = cols
@@ -2746,13 +2821,16 @@ function matchImport(
   for (let i = 1; i < rows.length; i++) {
     const row = rows[i]
     if (row.every((c) => String(c ?? '').trim() === '')) continue
-    const rawReg = cell(row, iReg)
-    if (!rawReg) continue
+    const typedReg = cell(row, iReg)
+    if (!typedReg) continue
+    const alias  = aliases[normReg(typedReg)]
+    const rawReg = alias ?? typedReg
+    const sheetReg = alias ? typedReg : undefined
     const target = rosterByReg.get(normReg(rawReg))
     if (!target) {
       unmatched++
       entries.push({
-        regnumber: rawReg, fname: '', lname: '', matched: false,
+        regnumber: rawReg, sheetReg, fname: '', lname: '', matched: false,
         current: emptyDraft(), incoming: emptyDraft(), changed: false,
       })
       continue
@@ -2771,7 +2849,7 @@ function matchImport(
     const changed = !sameDraft(cur, incoming)
     if (changed) matched++; else unchanged++
     entries.push({
-      regnumber: target.regnumber,
+      regnumber: target.regnumber, sheetReg,
       fname: target.fname, lname: target.lname,
       matched: true, current: cur, incoming, changed,
     })
@@ -2784,6 +2862,7 @@ function matchImport(
 
 function ImportPreviewModal({
   preview, onCancel, onApprove, canEnroll, enrolling, onEnroll,
+  unknownRegs, suggestions, onUseSuggestion,
 }: {
   preview:  ImportPreview | null
   onCancel: () => void
@@ -2793,6 +2872,12 @@ function ImportPreviewModal({
   enrolling: boolean
   /** Enrol the given registration numbers onto this module. */
   onEnroll: (regs: string[]) => void
+  /** Sheet numbers that belong to no student at all. */
+  unknownRegs: Set<string>
+  /** Closest real numbers for those, keyed by the number as typed. */
+  suggestions: Record<string, RegNumberSuggestion[]>
+  /** Read this sheet row as the chosen real number instead. */
+  onUseSuggestion: (sheetReg: string, realReg: string) => void
 }) {
   // Rows the user chose to leave as they are. A conflict defaults to taking
   // the uploaded value — that is why the file was uploaded — but every one of
@@ -2802,7 +2887,12 @@ function ImportPreviewModal({
   const [applying, setApplying] = useState(false)
   if (!preview) return null
   const { entries, summary } = preview
-  const unmatchedRegs = entries.filter((e) => !e.matched).map((e) => e.regnumber)
+  // Only numbers that belong to a real student can be enrolled; the others
+  // need a correction first, so "Enrol all" leaves them out.
+  const unmatchedRegs = entries
+    .filter((e) => !e.matched && !unknownRegs.has(e.regnumber))
+    .map((e) => e.regnumber)
+  const noSuchStudent = entries.filter((e) => !e.matched && unknownRegs.has(e.regnumber)).length
   const changedRegs = entries.filter((e) => e.matched && e.changed).map((e) => e.regnumber)
   // A "conflict" is a matched row that already holds a different mark.
   const conflicts = entries.filter(
@@ -2842,14 +2932,19 @@ function ImportPreviewModal({
               <AlertTriangle className="w-3 h-3" /> {summary.unmatched} unmatched
             </span>
           )}
-          {canEnroll && summary.unmatched > 0 && (
+          {noSuchStudent > 0 && (
+            <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full bg-rose-50 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300 font-semibold">
+              <AlertCircle className="w-3 h-3" /> {noSuchStudent} number{noSuchStudent === 1 ? '' : 's'} match no student
+            </span>
+          )}
+          {canEnroll && unmatchedRegs.length > 0 && (
             <button
               className="btn-primary btn-sm"
               disabled={enrolling}
               onClick={() => onEnroll(unmatchedRegs)}
             >
               {enrolling ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UserPlus className="w-3.5 h-3.5" />}
-              Enrol all {summary.unmatched} to this module
+              Enrol {unmatchedRegs.length === 1 ? 'this student' : `all ${unmatchedRegs.length}`} to this module
             </button>
           )}
           <span className="ml-auto text-ink-400">{entries.length} row(s) read</span>
@@ -2892,11 +2987,40 @@ function ImportPreviewModal({
                               ? <span className="text-ink-400 inline-flex items-center gap-1">Kept as is</span>
                               : <span className="text-emerald-700 dark:text-emerald-300 inline-flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Update</span>)
                           : <span className="text-ink-400">Unchanged</span>)
-                      : <span className="text-amber-700 dark:text-amber-300 inline-flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> Not in enrollment list</span>}
+                      : unknownRegs.has(e.regnumber)
+                        ? <span className="text-rose-700 dark:text-rose-300 inline-flex items-center gap-1"><AlertCircle className="w-3 h-3" /> No such student</span>
+                        : <span className="text-amber-700 dark:text-amber-300 inline-flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> Not in enrollment list</span>}
                   </td>
-                  <td className="px-3 py-1.5 font-mono">{e.regnumber}</td>
+                  <td className="px-3 py-1.5 font-mono">
+                    {e.regnumber}
+                    {e.sheetReg && (
+                      <span className="block text-[10.5px] font-sans text-ink-400" title="Corrected from the number on the sheet">
+                        sheet: <span className="font-mono line-through">{e.sheetReg}</span>
+                      </span>
+                    )}
+                  </td>
                   <td className="px-3 py-1.5">
-                    {e.matched ? `${e.fname} ${e.lname}` : canEnroll ? (
+                    {e.matched ? `${e.fname} ${e.lname}` : unknownRegs.has(e.regnumber) ? (
+                      suggestions[e.regnumber]?.length ? (
+                        <div className="flex flex-col items-start gap-1">
+                          <span className="text-[11px] text-ink-500">Did you mean:</span>
+                          {suggestions[e.regnumber].map((sug) => (
+                            <button
+                              key={sug.regnumber}
+                              className="btn-ghost btn-sm py-0.5 px-2 text-[11.5px] inline-flex items-center gap-1 border border-ink-200 dark:border-ink-600 rounded-md"
+                              title="Read this row as this student"
+                              onClick={() => onUseSuggestion(e.regnumber, sug.regnumber)}
+                            >
+                              <Wand2 className="w-3 h-3 text-brand" />
+                              <span className="font-mono">{sug.regnumber}</span>
+                              {sug.name && <span className="text-ink-500">· {sug.name}</span>}
+                            </button>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-[11.5px] text-ink-500">Check the number on the sheet</span>
+                      )
+                    ) : canEnroll ? (
                       <button
                         className="btn-primary btn-sm py-0.5 px-2 text-[11.5px] inline-flex items-center gap-1"
                         disabled={enrolling}
